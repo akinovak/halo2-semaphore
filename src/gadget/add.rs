@@ -1,14 +1,11 @@
-use std::marker::PhantomData;
-
 use halo2::{
     arithmetic::FieldExt,
-    circuit::{Cell, Chip, Layouter, Region, SimpleFloorPlanner},
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Instance, Selector},
-    poly::Rotation,
+    circuit::{Chip, Layouter},
+    plonk::{Error}
 };
 
-mod add;
-pub use add::{AddConfig, AddChip};
+mod chip;
+pub use chip::{AddConfig, AddChip};
 
 pub trait AddInstruction<F: FieldExt> 
 : Chip<F> 

@@ -2,8 +2,8 @@ use std::marker::PhantomData;
 
 use halo2::{
     arithmetic::FieldExt,
-    circuit::{Cell, Chip, Layouter, Region, SimpleFloorPlanner},
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Instance, Selector},
+    circuit::{Cell, Chip, Layouter, Region},
+    plonk::{Advice, Column, ConstraintSystem, Error, Selector},
     poly::Rotation,
 };
 
@@ -62,7 +62,7 @@ impl<F: FieldExt> AddChip<F> {
 }
 // ANCHOR_END: chip-config
 
-impl<F: FieldExt> Chip<F> for AddHChip<F> {
+impl<F: FieldExt> Chip<F> for AddChip<F> {
     type Config = AddConfig;
     type Loaded = ();
 
