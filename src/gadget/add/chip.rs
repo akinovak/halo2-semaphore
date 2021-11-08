@@ -11,7 +11,7 @@ use super::AddInstruction;
 use super::super::super::CellValue;
 
 // #[derive(Clone)]
-// pub struct Number<F: FieldExt> {
+// pub struct Cellber<F: FieldExt> {
 //     pub cell: Cell,
 //     pub value: Option<F>,
 // }
@@ -77,14 +77,14 @@ impl<F: FieldExt> Chip<F> for AddChip<F> {
 }
 
 impl<F: FieldExt> AddInstruction<F> for AddChip<F> {
-    type Num = CellValue<F>;
+    type Cell = CellValue<F>;
 
     fn add(
         &self,
         mut layouter: impl Layouter<F>,
-        a: Self::Num,
-        b: Self::Num,
-    ) -> Result<Self::Num, Error> {
+        a: Self::Cell,
+        b: Self::Cell,
+    ) -> Result<Self::Cell, Error> {
         let config = self.config();
 
         let mut out = None;

@@ -1,7 +1,8 @@
 use halo2::{
     arithmetic::FieldExt,
-    circuit::{Layouter, SimpleFloorPlanner},
-    plonk::{Advice, Instance, Circuit, Column, ConstraintSystem, Error},
+    circuit::{Layouter, SimpleFloorPlanner, Region},
+    plonk::{Advice, Instance, Circuit, Column, ConstraintSystem, Error, Selector},
+    poly::Rotation,
     pasta::Fp
 };
 
@@ -16,13 +17,17 @@ use crate:: {
     utils::{UtilitiesInstructions, CellValue}
 };
 
+// Absolute offsets for public inputs.
+const IDENTITY_COMMITMENT: usize = 0;
+const NULLIFIER_HASH: usize = 1;
 
 // Semaphore config
 #[derive(Clone, Debug)]
 pub struct Config {
-    advices: [Column<Advice>; 2],
+    advices: [Column<Advice>; 3],
     instance: Column<Instance>,
-    add_config: AddConfig
+    add_config: AddConfig,
+    s_external: Selector,
 }
 
 // Semaphore circuit
@@ -30,6 +35,7 @@ pub struct Config {
 pub struct SemaphoreCircuit<F> {
     identity_trapdoor: Option<F>,
     identity_nullifier: Option<F>,
+    external_nullifier: Option<F>,
 }
 
 impl<F: FieldExt> UtilitiesInstructions<F> for SemaphoreCircuit<F> {
@@ -49,17 +55,32 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
         let advices = [
             meta.advice_column(),
             meta.advice_column(),
+            meta.advice_column(),
         ];
 
         let instance = meta.instance_column();
         meta.enable_equality(instance.into());
 
-        let add_config = AddChip::configure(meta, advices);
+        for advice in advices.iter() {
+            meta.enable_equality((*advice).into());
+        }
+
+        // [0..2].try_into().unwrap()
+        let add_config = AddChip::configure(meta, advices[0..2].try_into().unwrap());
+
+        let s_external = meta.selector();
+        meta.create_gate("external nullifier", |meta| {
+            let advice_input = meta.query_advice(advices[2], Rotation::cur());
+            let public_input = meta.query_instance(instance, Rotation::cur());
+            let s_external = meta.query_selector(s_external);
+            vec![s_external * (advice_input - public_input)]
+        });
 
         Config {
             advices, 
             instance,
-            add_config
+            add_config,
+            s_external
         }
     }
 
@@ -83,11 +104,32 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             self.identity_nullifier,
         );
 
-        let identity_commitment = add_chip.add(layouter.namespace(|| "a + b"), identity_nullifier.unwrap(), identity_trapdoor.unwrap())?;
-        self.expose_public(layouter.namespace(|| "expose identity_commitment"), config.instance, identity_commitment, 0);
-        
+        layouter.assign_region(
+            || "external nullifier",
+            |mut region: Region<'_, F>| {
+
+                let a = region.assign_advice(
+                    || "external",
+                    config.advices[2],
+                    0,
+                    || self.external_nullifier.ok_or(Error::SynthesisError),
+                )?;
+                // region.constrain_equal(a.cell, lhs)?;
+                config.s_external.enable(&mut region, 0)?;
+                Ok(())
+            },
+        )?;
+
+
+        let identity_commitment = add_chip.add(layouter.namespace(|| "commitment"), identity_nullifier.unwrap(), identity_trapdoor.unwrap())?;
+        // let nullifier_hash = add_chip.add(layouter.namespace(|| "nullifier"), identity_nullifier.unwrap(), external_nullifier.unwrap())?;
+
+
         // TODO merkle chip for membership proof
         // TODO calc nullifier hash = hash(identity_nullifier, external_nullifier)
+        // let nullifier_hash = add_chip.add(layouter.namespace(|| "nullifier"), identity_nullifier.unwrap(), identity_trapdoor.unwrap())?;
+        self.constrain_public(layouter.namespace(|| "constrain identity_commitment"), config.instance, identity_commitment, IDENTITY_COMMITMENT);
+        // self.constrain_public(layouter.namespace(|| "constrain nullifier_hash"), config.instance, nullifier_hash, NULLIFIER_HASH);
 
         Ok({})
     }
@@ -102,14 +144,17 @@ fn main() {
 
     let identity_trapdoor = Fp::from(2);
     let identity_nullifier = Fp::from(3);
+    let external_nullifier = Fp::from(5);
     let identity_commitment = identity_trapdoor + identity_nullifier;
 
     let circuit = SemaphoreCircuit {
         identity_trapdoor: Some(identity_trapdoor),
         identity_nullifier: Some(identity_nullifier),
+        external_nullifier: Some(external_nullifier),
     };
 
-    let mut public_inputs = vec![identity_commitment];
+    let external_nullifier = Fp::from(10);
+    let mut public_inputs = vec![identity_commitment, external_nullifier + external_nullifier];
 
     // Given the correct public input, our circuit will verify.
     let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();

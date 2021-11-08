@@ -59,7 +59,7 @@ pub trait UtilitiesInstructions<F: FieldExt> {
         )
     }
 
-    fn expose_public(
+    fn constrain_public(
         &self,
         mut layouter: impl Layouter<F>,
         column: Column<Instance>,

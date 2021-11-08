@@ -10,13 +10,13 @@ pub use chip::{AddConfig, AddChip};
 pub trait AddInstruction<F: FieldExt> 
 : Chip<F> 
 {
-    type Num;
+    type Cell;
 
     fn add(
         &self,
         layouter: impl Layouter<F>,
-        a: Self::Num,
-        b: Self::Num,
-    ) -> Result<Self::Num, Error>;
+        a: Self::Cell,
+        b: Self::Cell,
+    ) -> Result<Self::Cell, Error>;
 
 }
