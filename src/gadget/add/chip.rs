@@ -8,12 +8,13 @@ use halo2::{
 };
 
 use super::AddInstruction;
+use super::super::super::CellValue;
 
-#[derive(Clone)]
-pub struct Number<F: FieldExt> {
-    pub cell: Cell,
-    pub value: Option<F>,
-}
+// #[derive(Clone)]
+// pub struct Number<F: FieldExt> {
+//     pub cell: Cell,
+//     pub value: Option<F>,
+// }
 
 #[derive(Clone, Debug)]
 pub struct AddConfig {
@@ -76,7 +77,7 @@ impl<F: FieldExt> Chip<F> for AddChip<F> {
 }
 
 impl<F: FieldExt> AddInstruction<F> for AddChip<F> {
-    type Num = Number<F>;
+    type Num = CellValue<F>;
 
     fn add(
         &self,
@@ -116,7 +117,7 @@ impl<F: FieldExt> AddInstruction<F> for AddChip<F> {
                     || value.ok_or(Error::SynthesisError),
                 )?;
 
-                out = Some(Number { cell, value });
+                out = Some(CellValue { cell, value });
                 Ok(())
             },
         )?;

@@ -2,11 +2,18 @@ use halo2::{
     arithmetic::FieldExt,
     circuit::{Layouter, SimpleFloorPlanner},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
+    pasta::Fp
 };
 
 mod gadget;
+mod utils;
+
 use gadget:: {
     add::{AddChip, AddConfig}
+};
+
+use crate:: {
+    utils::{UtilitiesInstructions, CellValue}
 };
 
 
@@ -22,6 +29,10 @@ pub struct Config {
 pub struct SemaphoreCircuit<F> {
     a: Option<F>,
     b: Option<F>,
+}
+
+impl<F: FieldExt> UtilitiesInstructions<F> for SemaphoreCircuit<F> {
+    type Var = CellValue<F>;
 }
 
 impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
@@ -54,14 +65,17 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
     ) -> Result<(), Error> {
         // Return empty for now
         Ok({})
+        // let psi_old = self.load_private(
+        //     layouter.namespace(|| "witness psi_old"),
+        //     config.advices[0],
+        //     Fp::from(3)
+        // )?;
     }
 
 }
 
 
 fn main() {
-    use halo2::{pasta::Fp};
-
     let a = Fp::from(2);
     let b = Fp::from(3);
 
