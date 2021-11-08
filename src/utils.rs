@@ -1,7 +1,7 @@
 use halo2::{
     arithmetic::FieldExt,
     circuit::{Cell, Layouter},
-    plonk::{Advice, Column, Error},
+    plonk::{Column, Advice, Instance, Error},
 };
 
 // #[derive(Clone)]
@@ -57,5 +57,15 @@ pub trait UtilitiesInstructions<F: FieldExt> {
                 Ok(Var::new(cell, value))
             },
         )
+    }
+
+    fn expose_public(
+        &self,
+        mut layouter: impl Layouter<F>,
+        column: Column<Instance>,
+        var: impl Var<F>,
+        row: usize,
+    ) -> Result<(), Error> {
+        layouter.constrain_instance(var.cell(), column, row)
     }
 }

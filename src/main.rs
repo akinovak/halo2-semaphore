@@ -1,7 +1,7 @@
 use halo2::{
     arithmetic::FieldExt,
     circuit::{Layouter, SimpleFloorPlanner},
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
+    plonk::{Advice, Instance, Circuit, Column, ConstraintSystem, Error},
     pasta::Fp
 };
 
@@ -21,6 +21,7 @@ use crate:: {
 #[derive(Clone, Debug)]
 pub struct Config {
     advices: [Column<Advice>; 2],
+    instance: Column<Instance>,
     add_config: AddConfig
 }
 
@@ -50,10 +51,14 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             meta.advice_column(),
         ];
 
+        let instance = meta.instance_column();
+        meta.enable_equality(instance.into());
+
         let add_config = AddChip::configure(meta, advices);
 
         Config {
             advices, 
+            instance,
             add_config
         }
     }
@@ -78,8 +83,11 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             self.identity_nullifier,
         );
 
-        let commitment = add_chip.add(layouter.namespace(|| "a + b"), identity_nullifier.unwrap(), identity_trapdoor.unwrap())?;
-
+        let identity_commitment = add_chip.add(layouter.namespace(|| "a + b"), identity_nullifier.unwrap(), identity_trapdoor.unwrap())?;
+        self.expose_public(layouter.namespace(|| "expose identity_commitment"), config.instance, identity_commitment, 0);
+        
+        // TODO merkle chip for membership proof
+        // TODO calc nullifier hash = hash(identity_nullifier, external_nullifier)
 
         Ok({})
     }
@@ -88,11 +96,27 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
 
 
 fn main() {
-    let a = Fp::from(2);
-    let b = Fp::from(3);
+    use halo2::{dev::MockProver};
 
-    let semaphore_circuit = SemaphoreCircuit {
-        identity_trapdoor: Some(a),
-        identity_nullifier: Some(b),
+    let k = 4;
+
+    let identity_trapdoor = Fp::from(2);
+    let identity_nullifier = Fp::from(3);
+    let identity_commitment = identity_trapdoor + identity_nullifier;
+
+    let circuit = SemaphoreCircuit {
+        identity_trapdoor: Some(identity_trapdoor),
+        identity_nullifier: Some(identity_nullifier),
     };
+
+    let mut public_inputs = vec![identity_commitment];
+
+    // Given the correct public input, our circuit will verify.
+    let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
+    assert_eq!(prover.verify(), Ok(()));
+
+    // If we try some other public input, the proof will fail!
+    public_inputs[0] += Fp::one();
+    let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
+    assert!(prover.verify().is_err());
 }
