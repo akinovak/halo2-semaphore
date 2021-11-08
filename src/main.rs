@@ -9,7 +9,7 @@ mod gadget;
 mod utils;
 
 use gadget:: {
-    add::{AddChip, AddConfig}
+    add::{AddChip, AddConfig, AddInstruction}
 };
 
 use crate:: {
@@ -27,8 +27,8 @@ pub struct Config {
 // Semaphore circuit
 #[derive(Debug, Default)]
 pub struct SemaphoreCircuit<F> {
-    a: Option<F>,
-    b: Option<F>,
+    identity_trapdoor: Option<F>,
+    identity_nullifier: Option<F>,
 }
 
 impl<F: FieldExt> UtilitiesInstructions<F> for SemaphoreCircuit<F> {
@@ -63,13 +63,25 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        // Return empty for now
+
+        let add_chip = AddChip::<F>::construct(config.add_config);
+        
+        let identity_trapdoor = self.load_private(
+            layouter.namespace(|| "witness identity_trapdoor"),
+            config.advices[0],
+            self.identity_trapdoor,
+        );
+
+        let identity_nullifier = self.load_private(
+            layouter.namespace(|| "witness identity_nullifier"),
+            config.advices[0],
+            self.identity_nullifier,
+        );
+
+        let commitment = add_chip.add(layouter.namespace(|| "a + b"), identity_nullifier.unwrap(), identity_trapdoor.unwrap())?;
+
+
         Ok({})
-        // let psi_old = self.load_private(
-        //     layouter.namespace(|| "witness psi_old"),
-        //     config.advices[0],
-        //     Fp::from(3)
-        // )?;
     }
 
 }
@@ -80,7 +92,7 @@ fn main() {
     let b = Fp::from(3);
 
     let semaphore_circuit = SemaphoreCircuit {
-        a: Some(a),
-        b: Some(b),
+        identity_trapdoor: Some(a),
+        identity_nullifier: Some(b),
     };
 }
