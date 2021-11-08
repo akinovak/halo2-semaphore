@@ -1,7 +1,7 @@
-mod circuit;
+pub mod circuit;
 
-use crate::circuit::*;
+// use crate::circuit::gadget::*;
 
 fn main() {
-    let circuit = SemaphoreCircuit {};
+    let semaphore_circuit = circuit::SemaphoreCircuit {};
 }
