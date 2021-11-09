@@ -1,6 +1,6 @@
 use halo2::{
     arithmetic::FieldExt,
-    circuit::{Cell, Layouter},
+    circuit::{Cell, Layouter, Region},
     plonk::{Column, Advice, Instance, Error},
 };
 
@@ -68,4 +68,24 @@ pub trait UtilitiesInstructions<F: FieldExt> {
     ) -> Result<(), Error> {
         layouter.constrain_instance(var.cell(), column, row)
     }
+}
+
+pub fn copy<A, AR, F: FieldExt>(
+    region: &mut Region<'_, F>,
+    annotation: A,
+    column: Column<Advice>,
+    offset: usize,
+    copy: &CellValue<F>,
+) -> Result<CellValue<F>, Error>
+where
+    A: Fn() -> AR,
+    AR: Into<String>,
+{
+    let cell = region.assign_advice(annotation, column, offset, || {
+        copy.value.ok_or(Error::SynthesisError)
+    })?;
+
+    region.constrain_equal(cell, copy.cell)?;
+
+    Ok(CellValue::new(cell, copy.value))
 }

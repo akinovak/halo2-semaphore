@@ -14,7 +14,7 @@ use gadget:: {
 };
 
 use crate:: {
-    utils::{UtilitiesInstructions, CellValue, Var}
+    utils::{copy, UtilitiesInstructions, CellValue, Var}
 };
 
 // Absolute offsets for public inputs.
@@ -25,10 +25,11 @@ const NULLIFIER_HASH: usize = 2;
 // Semaphore config
 #[derive(Clone, Debug)]
 pub struct Config {
-    advices: [Column<Advice>; 3],
+    advices: [Column<Advice>; 4],
     instance: Column<Instance>,
     add_config: AddConfig,
     s_external: Selector,
+    s_clone: Selector,
 }
 
 // Semaphore circuit
@@ -57,6 +58,7 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             meta.advice_column(),
             meta.advice_column(),
             meta.advice_column(),
+            meta.advice_column(),
         ];
 
         let instance = meta.instance_column();
@@ -66,10 +68,10 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             meta.enable_equality((*advice).into());
         }
 
-        // [0..2].try_into().unwrap()
         let add_config = AddChip::configure(meta, advices[0..2].try_into().unwrap());
 
         let s_external = meta.selector();
+        let s_clone = meta.selector();
         // TODO check why this is not working
         // meta.create_gate("Gate that constraints external nullifier with it's coresponding public input", |meta| {
         //     let s_external = meta.query_selector(s_external);
@@ -85,7 +87,8 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             advices, 
             instance,
             add_config,
-            s_external
+            s_external,
+            s_clone
         }
     }
 
@@ -101,18 +104,29 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             layouter.namespace(|| "witness identity_trapdoor"),
             config.advices[0],
             self.identity_trapdoor,
-        );
+        )?;
 
         let identity_nullifier = self.load_private(
             layouter.namespace(|| "witness identity_nullifier"),
             config.advices[0],
             self.identity_nullifier,
-        );
+        )?;
 
-        let identity_nullifier_clone = self.load_private(
-            layouter.namespace(|| "witness identity_nullifier_clone"),
-            config.advices[0],
-            self.identity_nullifier,
+        let identity_nullifier_clone = layouter.assign_region(
+            || "copy identity nullifier",
+            |mut region| {
+                config.s_clone.enable(&mut region, 0)?;
+
+                let cloned = copy(
+                    &mut region,
+                    || "copy identity_nullifier",
+                    config.advices[3],
+                    0,
+                    &identity_nullifier
+                )?;
+
+                Ok(cloned)
+            }
         );
 
         let external_nulifier = layouter.assign_region(
@@ -134,7 +148,7 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
 
         layouter.constrain_instance(external_nulifier.cell, config.instance, EXTERNAL_NULLIFIER)?;
 
-        let identity_commitment = add_chip.add(layouter.namespace(|| "commitment"), identity_nullifier.unwrap(), identity_trapdoor.unwrap())?;
+        let identity_commitment = add_chip.add(layouter.namespace(|| "commitment"), identity_nullifier, identity_trapdoor)?;
         let nullifier_hash = add_chip.add(layouter.namespace(|| "nullifier"), identity_nullifier_clone.unwrap(), external_nulifier)?;
 
 
@@ -171,7 +185,7 @@ fn main() {
     assert_eq!(prover.verify(), Ok(()));
 
     // If we try some other public input, the proof will fail!
-    // public_inputs[0] += Fp::one();
-    // let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
-    // assert!(prover.verify().is_err());
+    public_inputs[0] += Fp::one();
+    let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
+    assert!(prover.verify().is_err());
 }
