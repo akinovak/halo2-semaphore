@@ -89,3 +89,21 @@ where
 
     Ok(CellValue::new(cell, copy.value))
 }
+
+//HOW TO COPY
+// let identity_nullifier_clone = layouter.assign_region(
+//     || "copy identity nullifier",
+//     |mut region| {
+//         config.s_clone.enable(&mut region, 0)?;
+
+//         let cloned = copy(
+//             &mut region,
+//             || "copy identity_nullifier",
+//             config.advices[3],
+//             0,
+//             &identity_nullifier
+//         )?;
+
+//         Ok(cloned)
+//     }
+// );

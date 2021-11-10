@@ -1,9 +1,18 @@
 pub mod add;
+pub mod merkle;
 use crate::gadget::add::*;
-use halo2::{pasta::Fp};
+use crate::gadget::merkle::*;
+use halo2::{
+    pasta::Fp,
+    arithmetic::FieldExt
+};
 
-impl super::Config {
-    pub(super) fn add_chip(&self) -> AddChip<Fp> {
+impl<F: FieldExt> super::Config<F> {
+    pub(super) fn construct_add_chip(&self) -> AddChip<F> {
         AddChip::construct(self.add_config.clone())
+    }
+
+    pub(super) fn construct_merkle_chip(&self) -> MerkleChip<F> {
+        MerkleChip::construct(self.merkle_config.clone())
     }
 }

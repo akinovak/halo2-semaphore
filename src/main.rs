@@ -5,17 +5,21 @@ use halo2::{
     poly::Rotation,
     pasta::Fp
 };
+use std::marker::PhantomData;
 
 mod gadget;
 mod utils;
 
 use gadget:: {
-    add::{AddChip, AddConfig, AddInstruction}
+    add::{AddChip, AddConfig, AddInstruction},
+    merkle::{MerkleChip, MerkleConfig, MerkleInstructions}
 };
 
 use crate:: {
     utils::{copy, UtilitiesInstructions, CellValue, Var}
 };
+
+const MERKLE_DEPTH: usize = 1;
 
 // Absolute offsets for public inputs.
 const IDENTITY_COMMITMENT: usize = 0;
@@ -24,12 +28,13 @@ const NULLIFIER_HASH: usize = 2;
 
 // Semaphore config
 #[derive(Clone, Debug)]
-pub struct Config {
+pub struct Config<F> {
     advices: [Column<Advice>; 4],
     instance: Column<Instance>,
     add_config: AddConfig,
+    merkle_config: MerkleConfig,
     s_external: Selector,
-    s_clone: Selector,
+    pub _marker: PhantomData<F>,
 }
 
 // Semaphore circuit
@@ -38,6 +43,7 @@ pub struct SemaphoreCircuit<F> {
     identity_trapdoor: Option<F>,
     identity_nullifier: Option<F>,
     external_nullifier: Option<F>,
+    path_bit: [Option<F>; MERKLE_DEPTH],
 }
 
 impl<F: FieldExt> UtilitiesInstructions<F> for SemaphoreCircuit<F> {
@@ -45,7 +51,7 @@ impl<F: FieldExt> UtilitiesInstructions<F> for SemaphoreCircuit<F> {
 }
 
 impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
-    type Config = Config;
+    type Config = Config<F>;
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
@@ -69,11 +75,11 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
         }
 
         let add_config = AddChip::configure(meta, advices[0..2].try_into().unwrap());
+        let merkle_config = MerkleChip::configure(meta, advices[0..3].try_into().unwrap());
 
         let s_external = meta.selector();
-        let s_clone = meta.selector();
         // TODO check why this is not working
-        // meta.create_gate("Gate that constraints external nullifier with it's coresponding public input", |meta| {
+        // meta.create_gate("external nullifier", |meta| {
         //     let s_external = meta.query_selector(s_external);
         //     let advice_input = meta.query_advice(advices[2], Rotation::cur());
         //     let public_input = meta.query_instance(instance, Rotation::cur());
@@ -87,8 +93,9 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             advices, 
             instance,
             add_config,
+            merkle_config,
             s_external,
-            s_clone
+            _marker: PhantomData
         }
     }
 
@@ -98,7 +105,8 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
 
-        let add_chip = AddChip::<F>::construct(config.add_config);
+        let add_chip = config.construct_add_chip();
+        let merkle_chip = config.construct_merkle_chip();
         
         let identity_trapdoor = self.load_private(
             layouter.namespace(|| "witness identity_trapdoor"),
@@ -112,24 +120,23 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             self.identity_nullifier,
         )?;
 
-        let identity_nullifier_clone = layouter.assign_region(
-            || "copy identity nullifier",
-            |mut region| {
-                config.s_clone.enable(&mut region, 0)?;
+        assert_eq!(self.path_bit.len(), MERKLE_DEPTH);
 
-                let cloned = copy(
-                    &mut region,
-                    || "copy identity_nullifier",
-                    config.advices[3],
-                    0,
-                    &identity_nullifier
-                )?;
+        for i in 0..MERKLE_DEPTH {
+            let bit = self.load_private(
+                layouter.namespace(|| "`witness path bit"),
+                config.advices[0],
+                self.path_bit[i],
+            )?;
 
-                Ok(cloned)
-            }
-        );
+            merkle_chip.check_bool(layouter.namespace(|| "merkle namespace"), bit, i)?;
 
-        let external_nulifier = layouter.assign_region(
+        }
+
+        // let isOk = merkle_chip.check_bool(layouter.namespace(|| "merkle namespace"), bit_test, 0)?;
+        // println!("{}", isOk);
+
+        let external_nulifier_cell = layouter.assign_region(
             || "external nullifier",
             |mut region: Region<'_, F>| {
 
@@ -141,18 +148,15 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
                     0,
                     || self.external_nullifier.ok_or(Error::SynthesisError),
                 )?;
-                // region.constrain_equal(a.cell, lhs)?;
                 Ok(CellValue::new(cell, self.external_nullifier))
             },
         )?;
 
-        layouter.constrain_instance(external_nulifier.cell, config.instance, EXTERNAL_NULLIFIER)?;
-
         let identity_commitment = add_chip.add(layouter.namespace(|| "commitment"), identity_nullifier, identity_trapdoor)?;
-        let nullifier_hash = add_chip.add(layouter.namespace(|| "nullifier"), identity_nullifier_clone.unwrap(), external_nulifier)?;
-
+        let nullifier_hash = add_chip.add(layouter.namespace(|| "nullifier"), identity_nullifier, external_nulifier_cell)?;
 
         self.constrain_public(layouter.namespace(|| "constrain identity_commitment"), config.instance, identity_commitment, IDENTITY_COMMITMENT);
+        self.constrain_public(layouter.namespace(|| "constrain external_nullifier"), config.instance, external_nulifier_cell, EXTERNAL_NULLIFIER);
         self.constrain_public(layouter.namespace(|| "constrain nullifier_hash"), config.instance, nullifier_hash, NULLIFIER_HASH);
 
         Ok({})
@@ -169,6 +173,7 @@ fn main() {
     let identity_trapdoor = Fp::from(2);
     let identity_nullifier = Fp::from(3);
     let external_nullifier = Fp::from(5);
+    let path_bit = Fp::from(0);
     let identity_commitment = identity_trapdoor + identity_nullifier;
     let nullifier_hash = identity_nullifier + external_nullifier;
 
@@ -176,6 +181,7 @@ fn main() {
         identity_trapdoor: Some(identity_trapdoor),
         identity_nullifier: Some(identity_nullifier),
         external_nullifier: Some(external_nullifier),
+        path_bit: [Some(path_bit)]
     };
 
     let mut public_inputs = vec![identity_commitment, external_nullifier, nullifier_hash];
@@ -185,7 +191,7 @@ fn main() {
     assert_eq!(prover.verify(), Ok(()));
 
     // If we try some other public input, the proof will fail!
-    public_inputs[0] += Fp::one();
-    let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
-    assert!(prover.verify().is_err());
+    // public_inputs[0] += Fp::one();
+    // let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
+    // assert!(prover.verify().is_err());
 }
