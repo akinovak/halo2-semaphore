@@ -146,12 +146,13 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             path: self.path
         };
 
-        // for i in 0..MERKLE_DEPTH {
-        //     merkle_chip.hash_layer(layouter.namespace(|| "merkle namespace"), self.path_bit[i], self.identity_trapdoor, self.identity_nullifier, i)?;
+        let calculated_root = merkle_inputs.calculate_root(
+            layouter.namespace(|| "merkle root calculation"),
+            identity_commitment
+        )?;
+        
 
-        // }
 
-        // self.constrain_public(layouter.namespace(|| "constrain identity_commitment"), config.instance, identity_commitment, IDENTITY_COMMITMENT);
         self.constrain_public(layouter.namespace(|| "constrain external_nullifier"), config.instance, external_nulifier_cell, EXTERNAL_NULLIFIER)?;
         self.constrain_public(layouter.namespace(|| "constrain nullifier_hash"), config.instance, nullifier_hash, NULLIFIER_HASH)?;
 

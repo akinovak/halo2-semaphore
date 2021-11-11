@@ -54,7 +54,7 @@ impl<F: FieldExt> MerkleChip<F> {
         let s_bool = meta.selector();
 
         meta.create_gate("bool", |meta| {
-            let position_bit = meta.query_advice(advice[0], Rotation::cur());
+            let position_bit = meta.query_advice(advice[2], Rotation::cur());
             let s_bool = meta.query_selector(s_bool);
             vec![s_bool * position_bit.clone() * (Expression::Constant(F::one()) - position_bit)]
         });
