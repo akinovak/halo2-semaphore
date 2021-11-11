@@ -3,7 +3,6 @@ pub mod merkle;
 use crate::gadget::add::*;
 use crate::gadget::merkle::*;
 use halo2::{
-    pasta::Fp,
     arithmetic::FieldExt
 };
 
