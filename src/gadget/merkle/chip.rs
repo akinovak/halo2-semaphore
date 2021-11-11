@@ -23,7 +23,7 @@ pub struct MerkleConfig {
     pub hash_config: AddConfig
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MerkleChip<F: FieldExt> {
     pub config: MerkleConfig,
     pub _marker: PhantomData<F>,

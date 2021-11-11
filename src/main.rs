@@ -11,7 +11,7 @@ mod utils;
 
 use gadget:: {
     add::{AddChip, AddConfig, AddInstruction},
-    merkle::{MerkleChip, MerkleConfig}
+    merkle::{MerkleChip, MerkleConfig, MerklePath}
 };
 
 use crate:: {
@@ -41,7 +41,8 @@ pub struct SemaphoreCircuit<F> {
     identity_trapdoor: Option<F>,
     identity_nullifier: Option<F>,
     external_nullifier: Option<F>,
-    position_bits: [Option<F>; MERKLE_DEPTH],
+    position_bits: Option<[F; MERKLE_DEPTH]>,
+    path: Option<[F; MERKLE_DEPTH]>
 }
 
 impl<F: FieldExt> UtilitiesInstructions<F> for SemaphoreCircuit<F> {
@@ -137,7 +138,13 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
         let identity_commitment = add_chip.add(layouter.namespace(|| "commitment"), identity_nullifier, identity_trapdoor)?;
         let nullifier_hash = add_chip.add(layouter.namespace(|| "nullifier"), identity_nullifier, external_nulifier_cell)?;
 
-        assert_eq!(self.position_bits.len(), MERKLE_DEPTH);
+        // assert_eq!(self.position_bits.len(), MERKLE_DEPTH);
+
+        let merkle_inputs = MerklePath {
+            chip: merkle_chip,
+            leaf_pos: self.position_bits,
+            path: self.path
+        };
 
         // for i in 0..MERKLE_DEPTH {
         //     merkle_chip.hash_layer(layouter.namespace(|| "merkle namespace"), self.path_bit[i], self.identity_trapdoor, self.identity_nullifier, i)?;
@@ -161,6 +168,7 @@ fn main() {
     let identity_trapdoor = Fp::from(2);
     let identity_nullifier = Fp::from(3);
     let external_nullifier = Fp::from(5);
+    let path = Fp::from(10);
     let position_bits = Fp::from(0);
     let identity_commitment = identity_trapdoor + identity_nullifier;
     let nullifier_hash = identity_nullifier + external_nullifier;
@@ -169,7 +177,8 @@ fn main() {
         identity_trapdoor: Some(identity_trapdoor),
         identity_nullifier: Some(identity_nullifier),
         external_nullifier: Some(external_nullifier),
-        position_bits: [Some(position_bits)]
+        position_bits: Some([position_bits]),
+        path: Some([path])
     };
 
     let mut public_inputs = vec![external_nullifier, nullifier_hash];
