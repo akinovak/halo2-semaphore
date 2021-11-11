@@ -59,7 +59,7 @@ pub trait UtilitiesInstructions<F: FieldExt> {
         )
     }
 
-    fn constrain_public(
+    fn expose_public(
         &self,
         mut layouter: impl Layouter<F>,
         column: Column<Instance>,
@@ -70,6 +70,7 @@ pub trait UtilitiesInstructions<F: FieldExt> {
     }
 }
 
+#[allow(dead_code)]
 pub fn copy<A, AR, F: FieldExt>(
     region: &mut Region<'_, F>,
     annotation: A,
@@ -89,21 +90,3 @@ where
 
     Ok(CellValue::new(cell, copy.value))
 }
-
-//HOW TO COPY
-// let identity_nullifier_clone = layouter.assign_region(
-//     || "copy identity nullifier",
-//     |mut region| {
-//         config.s_clone.enable(&mut region, 0)?;
-
-//         let cloned = copy(
-//             &mut region,
-//             || "copy identity_nullifier",
-//             config.advices[3],
-//             0,
-//             &identity_nullifier
-//         )?;
-
-//         Ok(cloned)
-//     }
-// );

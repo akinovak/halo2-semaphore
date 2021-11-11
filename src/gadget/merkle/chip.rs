@@ -124,14 +124,14 @@ impl<F: FieldExt> MerkleInstructions<F> for MerkleChip<F> {
                     || left_or_digest_value.ok_or(Error::SynthesisError),
                 )?;
 
-                let sibling_cell = region.assign_advice(
+                let _sibling_cell = region.assign_advice(
                     || format!("witness sibling (layer {})", layer),
                     config.advice[1],
                     row_offset,
                     || sibling.ok_or(Error::SynthesisError),
                 )?;
 
-                let position_bit_cell = region.assign_advice(
+                let _position_bit_cell = region.assign_advice(
                     || format!("witness positional_bit (layer {})", layer),
                     config.advice[2],
                     row_offset,
@@ -141,7 +141,6 @@ impl<F: FieldExt> MerkleInstructions<F> for MerkleChip<F> {
                 if layer > 0 {
                     region.constrain_equal(leaf_or_digest.cell(), left_or_digest_cell)?;
                 }
-
 
                 config.s_bool.enable(&mut region, row_offset)?;
                 config.s_swap.enable(&mut region, row_offset)?;

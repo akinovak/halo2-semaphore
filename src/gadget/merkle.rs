@@ -49,8 +49,6 @@ impl<F: FieldExt>
         let mut node = leaf;
 
         for (layer, (sibling, pos)) in self.path.iter().zip(self.leaf_pos.iter()).enumerate() {
-            println!("{} : {:?} : {:?} ", layer, sibling, pos);
-
             node = self.chip.hash_layer(layouter.namespace(|| format!("hash l {}", layer)), node, Some(sibling[0]), Some(pos[0]), layer)?;
         }
 
