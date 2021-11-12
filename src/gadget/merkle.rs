@@ -7,7 +7,6 @@ use halo2::{
 mod chip;
 pub use chip::{MerkleConfig, MerkleChip};
 use super::super::MERKLE_DEPTH;
-// use super::super::utils::CellValue;
 
 
 pub trait MerkleInstructions<F: FieldExt> 
@@ -45,11 +44,14 @@ impl<F: FieldExt>
         mut layouter: impl Layouter<F>,
         leaf: <MerkleChip<F> as MerkleInstructions<F>>::Cell,
     ) -> Result<<MerkleChip<F> as MerkleInstructions<F>>::Cell, Error> {
-        // self.chip.hash_layer();
         let mut node = leaf;
+        
+        let path = self.path.unwrap();
+        let leaf_pos = self.leaf_pos.unwrap(); 
 
-        for (layer, (sibling, pos)) in self.path.iter().zip(self.leaf_pos.iter()).enumerate() {
-            node = self.chip.hash_layer(layouter.namespace(|| format!("hash l {}", layer)), node, Some(sibling[0]), Some(pos[0]), layer)?;
+        for (layer, (sibling, pos)) in path.iter().zip(leaf_pos.iter()).enumerate() {
+            // println!("usao: {:?}", sibling);
+            node = self.chip.hash_layer(layouter.namespace(|| format!("hash l {}", layer)), node, Some(*sibling), Some(*pos), layer)?;
         }
 
         Ok(node)

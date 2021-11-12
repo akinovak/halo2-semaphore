@@ -18,7 +18,7 @@ use crate:: {
     utils::{UtilitiesInstructions, CellValue}
 };
 
-pub const MERKLE_DEPTH: usize = 1;
+pub const MERKLE_DEPTH: usize = 4;
 
 // Absolute offsets for public inputs.
 const EXTERNAL_NULLIFIER: usize = 0;
@@ -109,13 +109,13 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
 
         let external_nulifier = self.load_private(
             layouter.namespace(|| "witness external nullifier"),
-            config.advices[1],
+            config.advices[0],
             self.external_nullifier
         )?;
 
         let root = self.load_private(
             layouter.namespace(|| "witness root"),
-            config.advices[1],
+            config.advices[0],
             self.root,
         )?;
 
@@ -128,14 +128,15 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             path: self.path
         };
 
-        let _calculated_root = merkle_inputs.calculate_root(
+        let calculated_root = merkle_inputs.calculate_root(
             layouter.namespace(|| "merkle root calculation"),
             identity_commitment
         )?;
+
         
         self.expose_public(layouter.namespace(|| "constrain external_nullifier"), config.instance, external_nulifier, EXTERNAL_NULLIFIER)?;
         self.expose_public(layouter.namespace(|| "constrain nullifier_hash"), config.instance, nullifier_hash, NULLIFIER_HASH)?;
-        self.expose_public(layouter.namespace(|| "constrain root"), config.instance, root, ROOT)?;
+        self.expose_public(layouter.namespace(|| "constrain root"), config.instance, calculated_root, ROOT)?;
 
         Ok({})
     }
@@ -145,24 +146,24 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
 fn main() {
     use halo2::{dev::MockProver};
 
-    let k = 4;
+    let k = 5;
 
     let identity_trapdoor = Fp::from(2);
     let identity_nullifier = Fp::from(3);
     let external_nullifier = Fp::from(5);
-    let path = Fp::from(10);
-    let position_bits = Fp::from(0);
+    let path = [Fp::from(1), Fp::from(1), Fp::from(1), Fp::from(1)];
+    let position_bits = [Fp::from(0), Fp::from(1), Fp::from(0), Fp::from(1)];
     let identity_commitment = identity_trapdoor + identity_nullifier;
     let nullifier_hash = identity_nullifier + external_nullifier;
 
-    let root = identity_commitment + path;
+    let root = identity_commitment + Fp::from(4);
 
     let circuit = SemaphoreCircuit {
         identity_trapdoor: Some(identity_trapdoor),
         identity_nullifier: Some(identity_nullifier),
         external_nullifier: Some(external_nullifier),
-        position_bits: Some([position_bits]),
-        path: Some([path]),
+        position_bits: Some(position_bits),
+        path: Some(path),
         root: Some(root)
     };
 
