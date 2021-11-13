@@ -124,6 +124,11 @@ impl<F: FieldExt> MerkleInstructions<F> for MerkleChip<F> {
                     || left_or_digest_value.ok_or(Error::SynthesisError),
                 )?;
 
+                if layer > 0 {
+                    region.constrain_equal(leaf_or_digest.cell(), left_or_digest_cell)?;
+                    // Should i do permutation here?
+                }
+
                 let _sibling_cell = region.assign_advice(
                     || format!("witness sibling (layer {})", layer),
                     config.advice[1],
@@ -137,10 +142,6 @@ impl<F: FieldExt> MerkleInstructions<F> for MerkleChip<F> {
                     row_offset,
                     || position_bit.ok_or(Error::SynthesisError),
                 )?;
-
-                if layer > 0 {
-                    region.constrain_equal(leaf_or_digest.cell(), left_or_digest_cell)?;
-                }
 
                 config.s_bool.enable(&mut region, row_offset)?;
                 config.s_swap.enable(&mut region, row_offset)?;

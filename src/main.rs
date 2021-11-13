@@ -113,7 +113,7 @@ impl<F: FieldExt> Circuit<F> for SemaphoreCircuit<F> {
             self.external_nullifier
         )?;
 
-        let root = self.load_private(
+        self.load_private(
             layouter.namespace(|| "witness root"),
             config.advices[0],
             self.root,
