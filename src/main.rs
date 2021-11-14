@@ -1,5 +1,4 @@
 use halo2::{
-    arithmetic::FieldExt,
     circuit::{Layouter, SimpleFloorPlanner},
     plonk::{Advice, Instance, Circuit, Column, ConstraintSystem, Error},
     pasta::Fp
@@ -9,8 +8,6 @@ use pasta_curves::{
     pallas,
 };
 
-use std::marker::PhantomData;
-
 mod primitives;
 mod gadget;
 mod utils;
@@ -18,12 +15,12 @@ mod utils;
 use gadget:: {
     add::{AddChip, AddConfig, AddInstruction},
     merkle::{MerkleChip, MerkleConfig, MerklePath},
-    poseidon::{Pow5T3Chip, Pow5T3Config, Hash}
+    poseidon::{Pow5T3Chip as PoseidonChip, Pow5T3Config as PoseidonConfig, Hash as PoseidonHash}
 };
 
 use crate:: {
     utils::{UtilitiesInstructions, CellValue},
-    primitives::poseidon::{self, ConstantLength, P128Pow5T3, Spec}
+    primitives::poseidon::{ConstantLength, Spec, P128Pow5T3}
 };
 
 pub const MERKLE_DEPTH: usize = 4;
@@ -35,33 +32,32 @@ const ROOT: usize = 2;
 
 // Semaphore config
 #[derive(Clone, Debug)]
-pub struct Config<F: FieldExt> {
+pub struct Config {
     advices: [Column<Advice>; 4],
     instance: Column<Instance>,
     add_config: AddConfig,
     merkle_config: MerkleConfig,
-    pow5t3_config: Pow5T3Config<pallas::Base>,
-    pub _marker: PhantomData<F>,
+    poseidon_config: PoseidonConfig<Fp>,
 }
 
 // Semaphore circuit
 #[derive(Debug, Default)]
-pub struct SemaphoreCircuit<F> {
-    identity_trapdoor: Option<F>,
-    identity_nullifier: Option<F>,
-    external_nullifier: Option<F>,
-    position_bits: Option<[F; MERKLE_DEPTH]>,
-    path: Option<[F; MERKLE_DEPTH]>,
-    root: Option<F>,
+pub struct SemaphoreCircuit {
+    identity_trapdoor: Option<Fp>,
+    identity_nullifier: Option<Fp>,
+    external_nullifier: Option<Fp>,
+    position_bits: Option<[Fp; MERKLE_DEPTH]>,
+    path: Option<[Fp; MERKLE_DEPTH]>,
+    root: Option<Fp>,
 }
 
-impl<F: FieldExt> UtilitiesInstructions<F> for SemaphoreCircuit<F> {
-    type Var = CellValue<F>;
+impl UtilitiesInstructions<pallas::Base> for SemaphoreCircuit {
+    type Var = CellValue<pallas::Base>;
 }
 
-impl Circuit<Fp> for SemaphoreCircuit<Fp> 
+impl Circuit<pallas::Base> for SemaphoreCircuit 
 {
-    type Config = Config<Fp>;
+    type Config = Config;
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
@@ -107,16 +103,14 @@ impl Circuit<Fp> for SemaphoreCircuit<Fp>
 
         meta.enable_constant(rc_b[0]);
 
-        let pow5t3_config = Pow5T3Chip::configure(meta, P128Pow5T3, advices[0..3].try_into().unwrap(), advices[3], rc_a, rc_b);
-        // let pow5t3_config = Pow5T3Chip::configure(meta, P128Pow5T3, advices[0..3].try_into().unwrap(), advices[3], rc_a, rc_b);
+        let poseidon_config = PoseidonChip::configure(meta, P128Pow5T3, advices[0..3].try_into().unwrap(), advices[3], rc_a, rc_b);
 
         Config {
             advices, 
             instance,
             add_config,
             merkle_config,
-            pow5t3_config,
-            _marker: PhantomData
+            poseidon_config,
         }
     }
 
@@ -128,7 +122,7 @@ impl Circuit<Fp> for SemaphoreCircuit<Fp>
 
         let add_chip = config.construct_add_chip();
         let merkle_chip = config.construct_merkle_chip();
-        let pow5t3_chip = config.construct_poseidon_chip();
+        let poseidon_chip = config.construct_poseidon_chip();
         
         let identity_trapdoor = self.load_private(
             layouter.namespace(|| "witness identity_trapdoor"),
@@ -157,10 +151,8 @@ impl Circuit<Fp> for SemaphoreCircuit<Fp>
         let identity_commitment = add_chip.add(layouter.namespace(|| "commitment"), identity_nullifier, identity_trapdoor)?;
         let nullifier_hash = add_chip.add(layouter.namespace(|| "nullifier"), identity_nullifier, external_nulifier)?;
 
-        // println!("{:?}", P128Pow5T3.constanst());
-        let hasher = Hash::init(pow5t3_chip, layouter.namespace(|| "init hasher"), ConstantLength::<2>)?;
-
-        // let message = [F::one(), F::one()];
+        let hasher: PoseidonHash<Fp, PoseidonChip<Fp>, P128Pow5T3, ConstantLength<2_usize>, 3_usize, 2_usize> = PoseidonHash::init(poseidon_chip, layouter.namespace(|| "init hasher"), ConstantLength::<2>)?;
+        // let message = [Fp::one(), Fp::one()];
         // let output = poseidon::Hash::init(P128Pow5T3, ConstantLength::<2>).hash(message);
 
         let merkle_inputs = MerklePath {
