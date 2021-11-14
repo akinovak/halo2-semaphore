@@ -7,4 +7,6 @@ edition = "2021"
 
 [dependencies]
 
+bitvec = "0.22"
+pasta_curves = "0.2.1"
 halo2 = "0.1.0-beta.1"

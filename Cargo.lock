@@ -169,7 +169,9 @@ dependencies = [
 name = "halo2-semaphore"
 version = "0.1.0"
 dependencies = [
+ "bitvec",
  "halo2",
+ "pasta_curves",
 ]
 
 [[package]]
