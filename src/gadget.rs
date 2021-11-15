@@ -5,13 +5,12 @@ pub mod poseidon;
 // use crate::gadget::merkle::*;
 // use crate::gadget::poseidon::;
 use halo2::{
-    arithmetic::FieldExt,
     pasta::Fp
 };
 
-use pasta_curves::{
-    pallas, vesta,
-};
+// use pasta_curves::{
+//     pallas, vesta,
+// };
 
 use crate::gadget::{
     add::*,

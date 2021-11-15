@@ -9,8 +9,8 @@ use halo2::{
 
 mod pow5t3;
 pub use pow5t3::{Pow5T3Chip, Pow5T3Config, StateWord};
-
-use crate::primitives::poseidon::{ConstantLength, Domain, Spec, Sponge, SpongeState, State};
+use crate::utils::{CellValue, Var};
+use crate::primitives::poseidon::{ConstantLength, Domain, Spec, Sponge, SpongeState, State, P128Pow5T3};
 
 /// The set of circuit instructions required to use the Poseidon permutation.
 pub trait PoseidonInstructions<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>:
@@ -243,6 +243,7 @@ impl<
         const RATE: usize,
         const L: usize,
     > Hash<F, PoseidonChip, S, ConstantLength<L>, T, RATE>
+where P128Pow5T3: Spec<F, 3_usize, 2_usize>
 {
     /// Hashes the given input.
     pub fn hash(
@@ -256,4 +257,73 @@ impl<
         }
         self.duplex.squeeze(layouter.namespace(|| "squeeze"))
     }
+
+    pub fn transform_poseidon_message( 
+        &mut self,
+        poseidon_config: Pow5T3Config<F>,
+        mut layouter: impl Layouter<F>,
+        message: [CellValue<F>; L]
+    ) -> Result<[Word<F, Pow5T3Chip<F>, P128Pow5T3, 3_usize, 2_usize>; 2_usize], Error> {
+        let poseidon_message = layouter.assign_region(
+            || "load message",
+            |mut region| {
+                let mut message_word = |i: usize| {
+                    let value = message[i].value();
+                    let var = region.assign_advice(
+                        || format!("load message_{}", i),
+                        poseidon_config.state[i],
+                        0,
+                        || value.ok_or(Error::SynthesisError),
+                    )?;
+                    region.constrain_equal(var, message[i].cell())?;
+                    Ok(Word::<F, Pow5T3Chip<F>, P128Pow5T3, 3, 2>::from_inner(
+                        StateWord::new(var, value),
+                    ))
+                };
+    
+                Ok([message_word(0)?, message_word(1)?])
+            },
+        )?;
+        Ok(poseidon_message)
+    } 
+}
+
+pub trait PrepareMessage 
+<
+    F: FieldExt,
+    PoseidonChip: PoseidonDuplexInstructions<F, S, T, RATE>,
+    S: Spec<F, T, RATE>,
+    const T: usize,
+    const RATE: usize,
+    const L: usize,
+>
+where P128Pow5T3: Spec<F, 3_usize, 2_usize>
+{
+    fn transform_poseidon_message( 
+        poseidon_config: Pow5T3Config<F>,
+        mut layouter: impl Layouter<F>,
+        message: [CellValue<F>; 2]
+    ) -> Result<[Word<F, Pow5T3Chip<F>, P128Pow5T3, 3, 2>; 2], Error> {
+        let poseidon_message = layouter.assign_region(
+            || "load message",
+            |mut region| {
+                let mut message_word = |i: usize| {
+                    let value = message[i].value();
+                    let var = region.assign_advice(
+                        || format!("load message_{}", i),
+                        poseidon_config.state[i],
+                        0,
+                        || value.ok_or(Error::SynthesisError),
+                    )?;
+                    region.constrain_equal(var, message[i].cell())?;
+                    Ok(Word::<F, Pow5T3Chip<F>, P128Pow5T3, 3, 2>::from_inner(
+                        StateWord::new(var, value),
+                    ))
+                };
+    
+                Ok([message_word(0)?, message_word(1)?])
+            },
+        )?;
+        Ok(poseidon_message)
+    } 
 }

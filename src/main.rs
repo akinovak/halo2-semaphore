@@ -15,12 +15,12 @@ mod utils;
 use gadget:: {
     add::{AddChip, AddConfig, AddInstruction},
     merkle::{MerkleChip, MerkleConfig, MerklePath},
-    poseidon::{Pow5T3Chip as PoseidonChip, Pow5T3Config as PoseidonConfig, Hash as PoseidonHash}
+    poseidon::{Pow5T3Chip as PoseidonChip, Pow5T3Config as PoseidonConfig, Hash as PoseidonHash, Word, StateWord}
 };
 
 use crate:: {
-    utils::{UtilitiesInstructions, CellValue},
-    primitives::poseidon::{ConstantLength, Spec, P128Pow5T3}
+    utils::{UtilitiesInstructions, CellValue, Var},
+    primitives::poseidon::{ConstantLength, P128Pow5T3}
 };
 
 pub const MERKLE_DEPTH: usize = 4;
@@ -83,13 +83,6 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
         let add_config = AddChip::configure(meta, advices[0..2].try_into().unwrap());
         let merkle_config = MerkleChip::configure(meta, advices[0..3].try_into().unwrap());
 
-        // meta: &mut ConstraintSystem<F>,
-        // spec: S,
-        // state: [Column<Advice>; WIDTH],
-        // partial_sbox: Column<Advice>,
-        // rc_a: [Column<Fixed>; WIDTH],
-        // rc_b: [Column<Fixed>; WIDTH],
-
         let rc_a = [
             meta.fixed_column(),
             meta.fixed_column(),
@@ -123,6 +116,17 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
         let add_chip = config.construct_add_chip();
         let merkle_chip = config.construct_merkle_chip();
         let poseidon_chip = config.construct_poseidon_chip();
+
+        let mut poseidon_hasher: PoseidonHash
+        <
+            Fp, 
+            PoseidonChip<Fp>, 
+            P128Pow5T3, 
+            ConstantLength<2_usize>, 
+            3_usize, 
+            2_usize
+        > 
+            = PoseidonHash::init(poseidon_chip, layouter.namespace(|| "init hasher"), ConstantLength::<2>)?;
         
         let identity_trapdoor = self.load_private(
             layouter.namespace(|| "witness identity_trapdoor"),
@@ -148,13 +152,42 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
             self.root,
         )?;
 
+        // poseidon_config: Pow5T3Config<F>,
+        // mut layouter: impl Layouter<F>,
+        // message: [CellValue<F>; L]
+        let message = [identity_trapdoor, identity_nullifier];
+        let poseidon_message = poseidon_hasher.transform_poseidon_message(
+            config.poseidon_config,
+            layouter.namespace(|| "identity commitment hash"),
+            message
+        )?;
+        // let poseidon_message = layouter.assign_region(
+        //     || "load message",
+        //     |mut region| {
+        //         let mut message_word = |i: usize| {
+        //             let value = message[i].value();
+        //             let var = region.assign_advice(
+        //                 || format!("load message_{}", i),
+        //                 config.poseidon_config.state[i],
+        //                 0,
+        //                 || value.ok_or(Error::SynthesisError),
+        //             )?;
+        //             region.constrain_equal(var, message[i].cell())?;
+        //             Ok(Word::<Fp, PoseidonChip<Fp>, P128Pow5T3, 3, 2>::from_inner(
+        //                 StateWord::new(var, value),
+        //             ))
+        //         };
+
+        //         Ok([message_word(0)?, message_word(1)?])
+        //     },
+        // )?;
+
         let identity_commitment = add_chip.add(layouter.namespace(|| "commitment"), identity_nullifier, identity_trapdoor)?;
         let nullifier_hash = add_chip.add(layouter.namespace(|| "nullifier"), identity_nullifier, external_nulifier)?;
 
-        let hasher: PoseidonHash<Fp, PoseidonChip<Fp>, P128Pow5T3, ConstantLength<2_usize>, 3_usize, 2_usize> = PoseidonHash::init(poseidon_chip, layouter.namespace(|| "init hasher"), ConstantLength::<2>)?;
-        // let message = [Fp::one(), Fp::one()];
-        // let output = poseidon::Hash::init(P128Pow5T3, ConstantLength::<2>).hash(message);
-
+        let identity_commitment_word = poseidon_hasher.hash(layouter.namespace(|| "hash"), poseidon_message)?;
+        let identity_commitment: CellValue<pallas::Base> = identity_commitment_word.inner().into();
+    
         let merkle_inputs = MerklePath {
             chip: merkle_chip,
             leaf_pos: self.position_bits,
@@ -167,9 +200,9 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
         )?;
 
         
-        self.expose_public(layouter.namespace(|| "constrain external_nullifier"), config.instance, external_nulifier, EXTERNAL_NULLIFIER)?;
-        self.expose_public(layouter.namespace(|| "constrain nullifier_hash"), config.instance, nullifier_hash, NULLIFIER_HASH)?;
-        self.expose_public(layouter.namespace(|| "constrain root"), config.instance, calculated_root, ROOT)?;
+        // self.expose_public(layouter.namespace(|| "constrain external_nullifier"), config.instance, external_nulifier, EXTERNAL_NULLIFIER)?;
+        // self.expose_public(layouter.namespace(|| "constrain nullifier_hash"), config.instance, nullifier_hash, NULLIFIER_HASH)?;
+        // self.expose_public(layouter.namespace(|| "constrain root"), config.instance, calculated_root, ROOT)?;
 
         Ok({})
     }
@@ -179,7 +212,7 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
 fn main() {
     use halo2::{dev::MockProver};
 
-    let k = 5;
+    let k = 7;
 
     let identity_trapdoor = Fp::from(2);
     let identity_nullifier = Fp::from(3);
@@ -187,6 +220,8 @@ fn main() {
     let path = [Fp::from(1), Fp::from(1), Fp::from(1), Fp::from(1)];
     let position_bits = [Fp::from(0), Fp::from(1), Fp::from(0), Fp::from(1)];
     let identity_commitment = identity_trapdoor + identity_nullifier;
+    let message = [identity_trapdoor, identity_nullifier];
+    // let identity_commitment = PoseidonHash::init(P128Pow5T3, ConstantLength::<2>).hash(message);
     let nullifier_hash = identity_nullifier + external_nullifier;
 
     let root = identity_commitment + Fp::from(4);
@@ -203,11 +238,11 @@ fn main() {
     let mut public_inputs = vec![external_nullifier, nullifier_hash, root];
 
     // Given the correct public input, our circuit will verify.
-    let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
-    assert_eq!(prover.verify(), Ok(()));
+    // let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
+    // assert_eq!(prover.verify(), Ok(()));
 
     // If we try some other public input, the proof will fail!
-    public_inputs[0] += Fp::one();
-    let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
-    assert!(prover.verify().is_err());
+    // public_inputs[0] += Fp::one();
+    // let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
+    // assert!(prover.verify().is_err());
 }
