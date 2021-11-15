@@ -1,5 +1,4 @@
 use halo2::{
-    arithmetic::FieldExt,
     circuit::{Layouter, SimpleFloorPlanner},
     plonk::{Advice, Instance, Circuit, Column, ConstraintSystem, Error},
     pasta::Fp
@@ -14,9 +13,8 @@ mod gadget;
 mod utils;
 
 use gadget:: {
-    add::{AddChip, AddConfig, AddInstruction},
     merkle::{MerkleChip, MerkleConfig, MerklePath},
-    poseidon::{Pow5T3Chip as PoseidonChip, Pow5T3Config as PoseidonConfig, Hash as PoseidonHash, Word, StateWord}
+    poseidon::{Pow5T3Chip as PoseidonChip, Pow5T3Config as PoseidonConfig, Hash as PoseidonHash}
 };
 
 use crate:: {
@@ -36,7 +34,6 @@ const ROOT: usize = 2;
 pub struct Config {
     advices: [Column<Advice>; 4],
     instance: Column<Instance>,
-    add_config: AddConfig,
     merkle_config: MerkleConfig,
     poseidon_config: PoseidonConfig<Fp>,
 }
@@ -117,8 +114,6 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
             meta.enable_equality((*advice).into());
         }
 
-        let add_config = AddChip::configure(meta, advices[0..2].try_into().unwrap());
-
         let rc_a = [
             meta.fixed_column(),
             meta.fixed_column(),
@@ -138,7 +133,6 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
         Config {
             advices, 
             instance,
-            add_config,
             merkle_config,
             poseidon_config,
         }
@@ -150,7 +144,6 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
         mut layouter: impl Layouter<Fp>,
     ) -> Result<(), Error> {
 
-        let add_chip = config.construct_add_chip();
         let merkle_chip = config.construct_merkle_chip();
 
         let identity_trapdoor = self.load_private(
@@ -207,14 +200,10 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
             layouter.namespace(|| "merkle root calculation"),
             identity_commitment
         )?;
-
-        println!("{:?}", calculated_root.value());
-
         
         self.expose_public(layouter.namespace(|| "constrain external_nullifier"), config.instance, external_nulifier, EXTERNAL_NULLIFIER)?;
         self.expose_public(layouter.namespace(|| "constrain nullifier_hash"), config.instance, nullifier_hash, NULLIFIER_HASH)?;
-        // self.expose_public(layouter.namespace(|| "constrain root"), config.instance, calculated_root, ROOT)?;
-
+        self.expose_public(layouter.namespace(|| "constrain root"), config.instance, calculated_root, ROOT)?;
         Ok({})
     }
 }
@@ -233,13 +222,19 @@ fn main() {
     let identity_nullifier = Fp::from(3);
     let external_nullifier = Fp::from(5);
     let path = [Fp::from(1), Fp::from(1), Fp::from(1), Fp::from(1)];
-    let position_bits = [Fp::from(0), Fp::from(1), Fp::from(0), Fp::from(1)];
-    let identity_commitment = identity_trapdoor + identity_nullifier;
+    let position_bits = [Fp::from(0), Fp::from(0), Fp::from(0), Fp::from(0)];
 
     let message = [identity_nullifier, external_nullifier];
     let nullifier_hash = Hash::init(P128Pow5T3, ConstantLength::<2>).hash(message);
 
-    let root = identity_commitment + Fp::from(4);
+    let commitment_message = [identity_trapdoor, identity_nullifier];
+    let identity_commitment = Hash::init(P128Pow5T3, ConstantLength::<2>).hash(commitment_message);
+
+    let mut root = identity_commitment;
+
+    for el in path {
+        root = Hash::init(P128Pow5T3, ConstantLength::<2>).hash([root, el]);
+    }
 
     let circuit = SemaphoreCircuit {
         identity_trapdoor: Some(identity_trapdoor),

@@ -1,7 +1,4 @@
-use std::marker::PhantomData;
-
 use halo2::{
-    arithmetic::FieldExt,
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error, Selector, Expression},
     poly::Rotation,
