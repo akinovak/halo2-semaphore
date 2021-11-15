@@ -9,14 +9,8 @@ use crate::utils::Var;
 use super::MerkleInstructions;
 use super::super::super::CellValue;
 
-// pub use super::super::add::{AddChip, AddConfig, AddInstruction};
 use crate::gadget::poseidon::{Pow5T3Config as PoseidonConfig, Pow5T3Chip as PoseidonChip, Hash as PoseidonHash};
 use crate::primitives::poseidon::{ConstantLength, P128Pow5T3};
-
-// pub use super::super::add::{AddChip, AddConfig, AddInstruction};
-
-
-// use super::add::*;
 
 #[derive(Clone, Debug)]
 pub struct MerkleConfig {
