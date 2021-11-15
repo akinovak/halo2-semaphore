@@ -164,12 +164,6 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
             self.external_nullifier
         )?;
 
-        self.load_private(
-            layouter.namespace(|| "witness root"),
-            config.advices[0],
-            self.root,
-        )?;
-
         let identity_commitment_message = [identity_trapdoor, identity_nullifier];
         let identity_commitment = self.hash(
             config.clone(), 
