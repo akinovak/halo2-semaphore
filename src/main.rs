@@ -1,4 +1,5 @@
 use halo2::{
+    arithmetic::FieldExt,
     circuit::{Layouter, SimpleFloorPlanner},
     plonk::{Advice, Instance, Circuit, Column, ConstraintSystem, Error},
     pasta::Fp
@@ -55,9 +56,41 @@ impl UtilitiesInstructions<pallas::Base> for SemaphoreCircuit {
     type Var = CellValue<pallas::Base>;
 }
 
-// impl SemaphoreCircuit {
-//     fn calculate_identity_commitment()
-// }
+impl SemaphoreCircuit {
+    fn hash(
+        &self,
+        config: Config,
+        mut layouter: impl Layouter<Fp>,
+        message: [CellValue<Fp>; 2],
+        to_hash: &str,
+    ) -> Result<CellValue<Fp>, Error> {
+        let config = config.clone();
+
+        let poseidon_chip = config.construct_poseidon_chip();
+
+        let mut poseidon_hasher: PoseidonHash
+        <
+            Fp, 
+            PoseidonChip<Fp>, 
+            P128Pow5T3, 
+            ConstantLength<2_usize>, 
+            3_usize, 
+            2_usize
+        > 
+            = PoseidonHash::init(poseidon_chip, layouter.namespace(|| "init hasher"), ConstantLength::<2>)?;
+
+        let loaded_message = poseidon_hasher.witness_message_pieces(
+            config.poseidon_config,
+            layouter.namespace(|| format!("witnessing: {}", to_hash)),
+            message
+        )?;
+
+        let word = poseidon_hasher.hash(layouter.namespace(|| format!("hashing: {}", to_hash)), loaded_message)?;
+        let digest: CellValue<Fp> = word.inner().into();
+
+        Ok(digest)
+    }
+}
 
 impl Circuit<pallas::Base> for SemaphoreCircuit 
 {
@@ -170,30 +203,50 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
         )?;
 
         let identity_commitment_message = [identity_trapdoor, identity_nullifier];
-        let identity_commitment_loaded = poseidon_hasher.witness_message_pieces(
-            config.poseidon_config.clone(),
-            layouter.namespace(|| "identity commitment hash"),
-            identity_commitment_message
+        let identity_commitment = self.hash(
+            config.clone(), 
+            layouter.namespace(|| "hash to identity commitment"),
+            identity_commitment_message,
+            "identity commitment"
         )?;
 
-        let identity_commitment_word = poseidon_hasher.hash(layouter.namespace(|| "hash to identity commitment"), identity_commitment_loaded, "identity commitment")?;
-        let identity_commitment: CellValue<Fp> = identity_commitment_word.inner().into();
+        println!("Identity Commitment: {:?}", identity_commitment.value());
+
+        let nullifier_hash_message = [identity_nullifier, external_nulifier];
+        let nullifier_hash = self.hash(
+            config.clone(), 
+            layouter.namespace(|| "hash to nullifier hash"),
+            nullifier_hash_message,
+            "nullifier hash"
+        )?;
+
+        println!("Nullifier hash: {:?}", nullifier_hash.value());
+
+
+        // let identity_commitment_loaded = poseidon_hasher.witness_message_pieces(
+        //     config.poseidon_config.clone(),
+        //     layouter.namespace(|| "identity commitment hash"),
+        //     identity_commitment_message
+        // )?;
+
+        // let identity_commitment_word = poseidon_hasher.hash(layouter.namespace(|| "hash to identity commitment"), identity_commitment_loaded, "identity commitment")?;
+        // let identity_commitment: CellValue<Fp> = identity_commitment_word.inner().into();
 
         // println!("{:?}", identity_commitment.value());
 
 
-        let nullifier_message = [identity_nullifier, external_nulifier];
+        // let nullifier_message = [identity_nullifier, external_nulifier];
 
-        let nullifier_loaded = poseidon_hasher_2.witness_message_pieces(
-            config.poseidon_config.clone(),
-            layouter.namespace(|| "nullifier hash"),
-            nullifier_message
-        )?;
+        // let nullifier_loaded = poseidon_hasher_2.witness_message_pieces(
+        //     config.poseidon_config.clone(),
+        //     layouter.namespace(|| "nullifier hash"),
+        //     nullifier_message
+        // )?;
 
-        let nullifier_hash_word = poseidon_hasher_2.hash(layouter.namespace(|| "hash to nullifier hash"), nullifier_loaded, "nullifier hash")?;
-        let nullifier_hash: CellValue<Fp> = nullifier_hash_word.inner().into();
+        // let nullifier_hash_word = poseidon_hasher_2.hash(layouter.namespace(|| "hash to nullifier hash"), nullifier_loaded, "nullifier hash")?;
+        // let nullifier_hash: CellValue<Fp> = nullifier_hash_word.inner().into();
 
-        println!("From circuit: {:?}", nullifier_hash.value());
+        // println!("From circuit: {:?}", nullifier_hash.value());
     
 
         // let identity_commitment = add_chip.add(layouter.namespace(|| "commitment"), identity_nullifier, identity_trapdoor)?;

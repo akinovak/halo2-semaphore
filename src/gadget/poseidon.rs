@@ -250,13 +250,12 @@ where P128Pow5T3: Spec<F, 3_usize, 2_usize>
         &mut self,
         mut layouter: impl Layouter<F>,
         message: [Word<F, PoseidonChip, S, T, RATE>; L],
-        to_hash: &str,
     ) -> Result<Word<F, PoseidonChip, S, T, RATE>, Error> {
         for (i, value) in array::IntoIter::new(message).enumerate() {
             self.duplex
                 .absorb(layouter.namespace(|| format!("absorb_{}", i)), value)?;
         }
-        self.duplex.squeeze(layouter.namespace(|| format!("squeeze {}", to_hash)))
+        self.duplex.squeeze(layouter.namespace(|| "squeeze"))
     }
 
     pub fn witness_message_pieces( 
