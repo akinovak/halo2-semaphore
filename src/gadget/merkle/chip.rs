@@ -5,13 +5,19 @@ use halo2::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error, Selector, Expression},
     poly::Rotation,
+    pasta::Fp
 };
 
 use crate::utils::Var;
 use super::MerkleInstructions;
 use super::super::super::CellValue;
 
-pub use super::super::add::{AddChip, AddConfig, AddInstruction};
+// pub use super::super::add::{AddChip, AddConfig, AddInstruction};
+use crate::gadget::poseidon::{Pow5T3Config as PoseidonConfig, Pow5T3Chip as PoseidonChip, Hash as PoseidonHash};
+use crate::primitives::poseidon::{ConstantLength, P128Pow5T3};
+
+// pub use super::super::add::{AddChip, AddConfig, AddInstruction};
+
 
 // use super::add::*;
 
@@ -20,16 +26,15 @@ pub struct MerkleConfig {
     pub advice: [Column<Advice>; 3],
     pub s_bool: Selector,
     pub s_swap: Selector,
-    pub hash_config: AddConfig
+    pub hash_config: PoseidonConfig<Fp>
 }
 
 #[derive(Clone, Debug)]
-pub struct MerkleChip<F: FieldExt> {
+pub struct MerkleChip{
     pub config: MerkleConfig,
-    pub _marker: PhantomData<F>,
 }
 
-impl<F: FieldExt> Chip<F> for MerkleChip<F> {
+impl Chip<Fp> for MerkleChip {
     type Config = MerkleConfig;
     type Loaded = ();
 
@@ -42,11 +47,12 @@ impl<F: FieldExt> Chip<F> for MerkleChip<F> {
     }
 }
 
-impl<F: FieldExt> MerkleChip<F> {
+impl MerkleChip {
     pub fn configure(
-        meta: &mut ConstraintSystem<F>,
+        meta: &mut ConstraintSystem<Fp>,
         advice: [Column<Advice>; 3],
-    ) -> <Self as Chip<F>>::Config {
+        hash_config: PoseidonConfig<Fp>,
+    ) -> <Self as Chip<Fp>>::Config {
         for column in &advice {
             meta.enable_equality((*column).into());
         }
@@ -56,7 +62,7 @@ impl<F: FieldExt> MerkleChip<F> {
         meta.create_gate("bool", |meta| {
             let position_bit = meta.query_advice(advice[2], Rotation::cur());
             let s_bool = meta.query_selector(s_bool);
-            vec![s_bool * position_bit.clone() * (Expression::Constant(F::one()) - position_bit)]
+            vec![s_bool * position_bit.clone() * (Expression::Constant(Fp::one()) - position_bit)]
         });
 
         let s_swap = meta.selector();
@@ -68,10 +74,10 @@ impl<F: FieldExt> MerkleChip<F> {
             let s_swap = meta.query_selector(s_swap);
             let l = meta.query_advice(advice[0], Rotation::next());
             let r = meta.query_advice(advice[1], Rotation::next());
-            vec![s_swap * ((bit * F::from(2) * (b.clone() - a.clone()) - (l - a)) - (b - r))]
+            vec![s_swap * ((bit * Fp::from(2) * (b.clone() - a.clone()) - (l - a)) - (b - r))]
         });
 
-        let hash_config = AddChip::configure(meta, advice[0..2].try_into().unwrap());
+        let hash_config = hash_config.clone();
 
         MerkleConfig {
             advice,
@@ -81,34 +87,30 @@ impl<F: FieldExt> MerkleChip<F> {
         }
     }
 
-    pub fn construct(config: <Self as Chip<F>>::Config) -> Self {
+    pub fn construct(config: <Self as Chip<Fp>>::Config) -> Self {
         Self {
             config,
-            _marker: PhantomData,
         }
     }
 }
 // ANCHOR_END: chip-config
 
-impl<F: FieldExt> MerkleInstructions<F> for MerkleChip<F> {
-    type Cell = CellValue<F>;
+impl MerkleInstructions for MerkleChip {
+    type Cell = CellValue<Fp>;
 
     fn hash_layer(
         &self,
-        mut layouter: impl Layouter<F>,
+        mut layouter: impl Layouter<Fp>,
         leaf_or_digest: Self::Cell,
-        sibling: Option<F>,
-        position_bit: Option<F>,
+        sibling: Option<Fp>,
+        position_bit: Option<Fp>,
         layer: usize,
     ) -> Result<Self::Cell, Error> {
 
         let config = self.config.clone();
 
-        let add_chip = AddChip::<F>::construct(config.hash_config.clone());
-
         let mut left_digest = None;
         let mut right_digest = None;
-        // let mut digest = None;
 
         layouter.assign_region(
             || format!("hash on (layer {})", layer),
@@ -147,7 +149,7 @@ impl<F: FieldExt> MerkleInstructions<F> for MerkleChip<F> {
                 config.s_swap.enable(&mut region, row_offset)?;
 
 
-                let (l_value, r_value): (F, F) = if position_bit == Some(F::zero()) {
+                let (l_value, r_value): (Fp, Fp) = if position_bit == Some(Fp::zero()) {
                     (left_or_digest_value.ok_or(Error::SynthesisError)?, sibling.ok_or(Error::SynthesisError)?)
                 } else {
                     (sibling.ok_or(Error::SynthesisError)?, left_or_digest_value.ok_or(Error::SynthesisError)?)
@@ -177,7 +179,27 @@ impl<F: FieldExt> MerkleInstructions<F> for MerkleChip<F> {
             },
         )?;
 
-        let digest = add_chip.add(layouter.namespace(|| format!("digest on (layer {})", layer)), left_digest.unwrap(), right_digest.unwrap())?;
+        let poseidon_chip = PoseidonChip::construct(config.hash_config.clone());
+        let mut poseidon_hasher: PoseidonHash
+        <
+            Fp, 
+            PoseidonChip<Fp>, 
+            P128Pow5T3, 
+            ConstantLength<2_usize>, 
+            3_usize, 
+            2_usize
+        > 
+            = PoseidonHash::init(poseidon_chip, layouter.namespace(|| "init hasher"), ConstantLength::<2>)?;
+
+        let message = [left_digest.unwrap(), right_digest.unwrap()];
+        let loaded_message = poseidon_hasher.witness_message_pieces(
+            config.hash_config.clone(),
+            layouter.namespace(|| format!("witnessing hash of a layer: {}", layer)),
+            message
+        )?;
+
+        let word = poseidon_hasher.hash(layouter.namespace(|| format!("hashing layer: {}", layer)), loaded_message)?;
+        let digest: CellValue<Fp> = word.inner().into();
 
         Ok(digest)
     }

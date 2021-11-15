@@ -23,7 +23,7 @@ impl super::Config {
         AddChip::construct(self.add_config.clone())
     }
 
-    pub(super) fn construct_merkle_chip(&self) -> MerkleChip<Fp> {
+    pub(super) fn construct_merkle_chip(&self) -> MerkleChip {
         MerkleChip::construct(self.merkle_config.clone())
     }
 

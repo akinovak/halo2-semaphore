@@ -118,7 +118,6 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
         }
 
         let add_config = AddChip::configure(meta, advices[0..2].try_into().unwrap());
-        let merkle_config = MerkleChip::configure(meta, advices[0..3].try_into().unwrap());
 
         let rc_a = [
             meta.fixed_column(),
@@ -134,6 +133,7 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
         meta.enable_constant(rc_b[0]);
 
         let poseidon_config = PoseidonChip::configure(meta, P128Pow5T3, advices[0..3].try_into().unwrap(), advices[3], rc_a, rc_b);
+        let merkle_config = MerkleChip::configure(meta, advices[0..3].try_into().unwrap(), poseidon_config.clone());
 
         Config {
             advices, 
@@ -197,16 +197,18 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
 
         // println!("Nullifier hash: {:?}", nullifier_hash.value());
 
-        // let merkle_inputs = MerklePath {
-        //     chip: merkle_chip,
-        //     leaf_pos: self.position_bits,
-        //     path: self.path
-        // };
+        let merkle_inputs = MerklePath {
+            chip: merkle_chip,
+            leaf_pos: self.position_bits,
+            path: self.path
+        };
 
-        // let calculated_root = merkle_inputs.calculate_root(
-        //     layouter.namespace(|| "merkle root calculation"),
-        //     identity_commitment
-        // )?;
+        let calculated_root = merkle_inputs.calculate_root(
+            layouter.namespace(|| "merkle root calculation"),
+            identity_commitment
+        )?;
+
+        println!("{:?}", calculated_root.value());
 
         
         self.expose_public(layouter.namespace(|| "constrain external_nullifier"), config.instance, external_nulifier, EXTERNAL_NULLIFIER)?;
@@ -225,7 +227,7 @@ fn main() {
         primitives::poseidon::{Hash}
     };
 
-    let k = 7;
+    let k = 10;
 
     let identity_trapdoor = Fp::from(2);
     let identity_nullifier = Fp::from(3);
