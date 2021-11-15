@@ -247,63 +247,24 @@ where P128Pow5T3: Spec<F, 3_usize, 2_usize>
 {
     /// Hashes the given input.
     pub fn hash(
-        mut self,
+        &mut self,
         mut layouter: impl Layouter<F>,
         message: [Word<F, PoseidonChip, S, T, RATE>; L],
+        to_hash: &str,
     ) -> Result<Word<F, PoseidonChip, S, T, RATE>, Error> {
         for (i, value) in array::IntoIter::new(message).enumerate() {
             self.duplex
                 .absorb(layouter.namespace(|| format!("absorb_{}", i)), value)?;
         }
-        self.duplex.squeeze(layouter.namespace(|| "squeeze"))
+        self.duplex.squeeze(layouter.namespace(|| format!("squeeze {}", to_hash)))
     }
 
-    pub fn transform_poseidon_message( 
+    pub fn witness_message_pieces( 
         &mut self,
         poseidon_config: Pow5T3Config<F>,
         mut layouter: impl Layouter<F>,
         message: [CellValue<F>; L]
     ) -> Result<[Word<F, Pow5T3Chip<F>, P128Pow5T3, 3_usize, 2_usize>; 2_usize], Error> {
-        let poseidon_message = layouter.assign_region(
-            || "load message",
-            |mut region| {
-                let mut message_word = |i: usize| {
-                    let value = message[i].value();
-                    let var = region.assign_advice(
-                        || format!("load message_{}", i),
-                        poseidon_config.state[i],
-                        0,
-                        || value.ok_or(Error::SynthesisError),
-                    )?;
-                    region.constrain_equal(var, message[i].cell())?;
-                    Ok(Word::<F, Pow5T3Chip<F>, P128Pow5T3, 3, 2>::from_inner(
-                        StateWord::new(var, value),
-                    ))
-                };
-    
-                Ok([message_word(0)?, message_word(1)?])
-            },
-        )?;
-        Ok(poseidon_message)
-    } 
-}
-
-pub trait PrepareMessage 
-<
-    F: FieldExt,
-    PoseidonChip: PoseidonDuplexInstructions<F, S, T, RATE>,
-    S: Spec<F, T, RATE>,
-    const T: usize,
-    const RATE: usize,
-    const L: usize,
->
-where P128Pow5T3: Spec<F, 3_usize, 2_usize>
-{
-    fn transform_poseidon_message( 
-        poseidon_config: Pow5T3Config<F>,
-        mut layouter: impl Layouter<F>,
-        message: [CellValue<F>; 2]
-    ) -> Result<[Word<F, Pow5T3Chip<F>, P128Pow5T3, 3, 2>; 2], Error> {
         let poseidon_message = layouter.assign_region(
             || "load message",
             |mut region| {

@@ -115,6 +115,7 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
 
         let add_chip = config.construct_add_chip();
         let merkle_chip = config.construct_merkle_chip();
+
         let poseidon_chip = config.construct_poseidon_chip();
 
         let mut poseidon_hasher: PoseidonHash
@@ -127,6 +128,17 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
             2_usize
         > 
             = PoseidonHash::init(poseidon_chip, layouter.namespace(|| "init hasher"), ConstantLength::<2>)?;
+
+        // let mut nullifier_hasher: PoseidonHash
+        //     <
+        //         Fp, 
+        //         PoseidonChip<Fp>, 
+        //         P128Pow5T3, 
+        //         ConstantLength<2_usize>, 
+        //         3_usize, 
+        //         2_usize
+        //     > 
+        //         = PoseidonHash::init(poseidon_chip, layouter.namespace(|| "init hasher"), ConstantLength::<2>)?;
         
         let identity_trapdoor = self.load_private(
             layouter.namespace(|| "witness identity_trapdoor"),
@@ -152,52 +164,43 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
             self.root,
         )?;
 
-        // poseidon_config: Pow5T3Config<F>,
-        // mut layouter: impl Layouter<F>,
-        // message: [CellValue<F>; L]
-        let message = [identity_trapdoor, identity_nullifier];
-        let poseidon_message = poseidon_hasher.transform_poseidon_message(
-            config.poseidon_config,
+        let identity_commitment_message = [identity_trapdoor, identity_nullifier];
+        let identity_commitment_loaded = poseidon_hasher.witness_message_pieces(
+            config.poseidon_config.clone(),
             layouter.namespace(|| "identity commitment hash"),
-            message
+            identity_commitment_message
         )?;
-        // let poseidon_message = layouter.assign_region(
-        //     || "load message",
-        //     |mut region| {
-        //         let mut message_word = |i: usize| {
-        //             let value = message[i].value();
-        //             let var = region.assign_advice(
-        //                 || format!("load message_{}", i),
-        //                 config.poseidon_config.state[i],
-        //                 0,
-        //                 || value.ok_or(Error::SynthesisError),
-        //             )?;
-        //             region.constrain_equal(var, message[i].cell())?;
-        //             Ok(Word::<Fp, PoseidonChip<Fp>, P128Pow5T3, 3, 2>::from_inner(
-        //                 StateWord::new(var, value),
-        //             ))
-        //         };
 
-        //         Ok([message_word(0)?, message_word(1)?])
-        //     },
-        // )?;
-
-        let identity_commitment = add_chip.add(layouter.namespace(|| "commitment"), identity_nullifier, identity_trapdoor)?;
-        let nullifier_hash = add_chip.add(layouter.namespace(|| "nullifier"), identity_nullifier, external_nulifier)?;
-
-        let identity_commitment_word = poseidon_hasher.hash(layouter.namespace(|| "hash"), poseidon_message)?;
+        let identity_commitment_word = poseidon_hasher.hash(layouter.namespace(|| "hash to identity commitment"), identity_commitment_loaded, "identity commitment")?;
         let identity_commitment: CellValue<pallas::Base> = identity_commitment_word.inner().into();
-    
-        let merkle_inputs = MerklePath {
-            chip: merkle_chip,
-            leaf_pos: self.position_bits,
-            path: self.path
-        };
 
-        let calculated_root = merkle_inputs.calculate_root(
-            layouter.namespace(|| "merkle root calculation"),
-            identity_commitment
+
+        let nullifier_message = [identity_nullifier, external_nulifier];
+
+        let nullifier_loaded = poseidon_hasher.witness_message_pieces(
+            config.poseidon_config.clone(),
+            layouter.namespace(|| "nullifier hash"),
+            nullifier_message
         )?;
+
+        let nullifier_hash_word = poseidon_hasher.hash(layouter.namespace(|| "hash to nullifier hash"), nullifier_loaded, "nullifier hash")?;
+        let nullifier_hash: CellValue<pallas::Base> = nullifier_hash_word.inner().into();
+    
+
+        // let identity_commitment = add_chip.add(layouter.namespace(|| "commitment"), identity_nullifier, identity_trapdoor)?;
+        // let nullifier_hash = add_chip.add(layouter.namespace(|| "nullifier"), identity_nullifier, external_nulifier)?;
+
+
+        // let merkle_inputs = MerklePath {
+        //     chip: merkle_chip,
+        //     leaf_pos: self.position_bits,
+        //     path: self.path
+        // };
+
+        // let calculated_root = merkle_inputs.calculate_root(
+        //     layouter.namespace(|| "merkle root calculation"),
+        //     identity_commitment
+        // )?;
 
         
         // self.expose_public(layouter.namespace(|| "constrain external_nullifier"), config.instance, external_nulifier, EXTERNAL_NULLIFIER)?;
