@@ -615,261 +615,261 @@ impl<F: FieldExt> Pow5T3State<F> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use ff::PrimeField;
-    use halo2::{
-        arithmetic::FieldExt,
-        circuit::{Layouter, SimpleFloorPlanner},
-        dev::MockProver,
-        pasta::Fp,
-        plonk::{Circuit, ConstraintSystem, Error},
-    };
-    use pasta_curves::pallas;
+// #[cfg(test)]
+// mod tests {
+//     use ff::PrimeField;
+//     use halo2::{
+//         arithmetic::FieldExt,
+//         circuit::{Layouter, SimpleFloorPlanner},
+//         dev::MockProver,
+//         pasta::Fp,
+//         plonk::{Circuit, ConstraintSystem, Error},
+//     };
+//     use pasta_curves::pallas;
 
-    use super::{PoseidonInstructions, Pow5T3Chip, Pow5T3Config, StateWord, WIDTH};
-    use crate::{
-        circuit::gadget::poseidon::{Hash, Word},
-        primitives::poseidon::{self, ConstantLength, P128Pow5T3 as OrchardNullifier, Spec},
-    };
+//     use super::{PoseidonInstructions, Pow5T3Chip, Pow5T3Config, StateWord, WIDTH};
+//     use crate::{
+//         circuit::gadget::poseidon::{Hash, Word},
+//         primitives::poseidon::{self, ConstantLength, P128Pow5T3 as OrchardNullifier, Spec},
+//     };
 
-    struct PermuteCircuit {}
+//     struct PermuteCircuit {}
 
-    impl Circuit<Fp> for PermuteCircuit {
-        type Config = Pow5T3Config<Fp>;
-        type FloorPlanner = SimpleFloorPlanner;
+//     impl Circuit<Fp> for PermuteCircuit {
+//         type Config = Pow5T3Config<Fp>;
+//         type FloorPlanner = SimpleFloorPlanner;
 
-        fn without_witnesses(&self) -> Self {
-            PermuteCircuit {}
-        }
+//         fn without_witnesses(&self) -> Self {
+//             PermuteCircuit {}
+//         }
 
-        fn configure(meta: &mut ConstraintSystem<Fp>) -> Pow5T3Config<Fp> {
-            let state = [
-                meta.advice_column(),
-                meta.advice_column(),
-                meta.advice_column(),
-            ];
-            let partial_sbox = meta.advice_column();
+//         fn configure(meta: &mut ConstraintSystem<Fp>) -> Pow5T3Config<Fp> {
+//             let state = [
+//                 meta.advice_column(),
+//                 meta.advice_column(),
+//                 meta.advice_column(),
+//             ];
+//             let partial_sbox = meta.advice_column();
 
-            let rc_a = [
-                meta.fixed_column(),
-                meta.fixed_column(),
-                meta.fixed_column(),
-            ];
-            let rc_b = [
-                meta.fixed_column(),
-                meta.fixed_column(),
-                meta.fixed_column(),
-            ];
+//             let rc_a = [
+//                 meta.fixed_column(),
+//                 meta.fixed_column(),
+//                 meta.fixed_column(),
+//             ];
+//             let rc_b = [
+//                 meta.fixed_column(),
+//                 meta.fixed_column(),
+//                 meta.fixed_column(),
+//             ];
 
-            Pow5T3Chip::configure(meta, OrchardNullifier, state, partial_sbox, rc_a, rc_b)
-        }
+//             Pow5T3Chip::configure(meta, OrchardNullifier, state, partial_sbox, rc_a, rc_b)
+//         }
 
-        fn synthesize(
-            &self,
-            config: Pow5T3Config<Fp>,
-            mut layouter: impl Layouter<Fp>,
-        ) -> Result<(), Error> {
-            let initial_state = layouter.assign_region(
-                || "prepare initial state",
-                |mut region| {
-                    let mut state_word = |i: usize| {
-                        let value = Some(Fp::from(i as u64));
-                        let var = region.assign_advice(
-                            || format!("load state_{}", i),
-                            config.state[i],
-                            0,
-                            || value.ok_or(Error::SynthesisError),
-                        )?;
-                        Ok(StateWord { var, value })
-                    };
+//         fn synthesize(
+//             &self,
+//             config: Pow5T3Config<Fp>,
+//             mut layouter: impl Layouter<Fp>,
+//         ) -> Result<(), Error> {
+//             let initial_state = layouter.assign_region(
+//                 || "prepare initial state",
+//                 |mut region| {
+//                     let mut state_word = |i: usize| {
+//                         let value = Some(Fp::from(i as u64));
+//                         let var = region.assign_advice(
+//                             || format!("load state_{}", i),
+//                             config.state[i],
+//                             0,
+//                             || value.ok_or(Error::SynthesisError),
+//                         )?;
+//                         Ok(StateWord { var, value })
+//                     };
 
-                    Ok([state_word(0)?, state_word(1)?, state_word(2)?])
-                },
-            )?;
+//                     Ok([state_word(0)?, state_word(1)?, state_word(2)?])
+//                 },
+//             )?;
 
-            let chip = Pow5T3Chip::construct(config.clone());
-            let final_state = <Pow5T3Chip<_> as PoseidonInstructions<
-                Fp,
-                OrchardNullifier,
-                WIDTH,
-                2,
-            >>::permute(&chip, &mut layouter, &initial_state)?;
+//             let chip = Pow5T3Chip::construct(config.clone());
+//             let final_state = <Pow5T3Chip<_> as PoseidonInstructions<
+//                 Fp,
+//                 OrchardNullifier,
+//                 WIDTH,
+//                 2,
+//             >>::permute(&chip, &mut layouter, &initial_state)?;
 
-            // For the purpose of this test, compute the real final state inline.
-            let mut expected_final_state = [Fp::zero(), Fp::one(), Fp::from_u64(2)];
-            let (round_constants, mds, _) = OrchardNullifier.constants();
-            poseidon::permute::<_, OrchardNullifier, WIDTH, 2>(
-                &mut expected_final_state,
-                &mds,
-                &round_constants,
-            );
+//             // For the purpose of this test, compute the real final state inline.
+//             let mut expected_final_state = [Fp::zero(), Fp::one(), Fp::from_u64(2)];
+//             let (round_constants, mds, _) = OrchardNullifier.constants();
+//             poseidon::permute::<_, OrchardNullifier, WIDTH, 2>(
+//                 &mut expected_final_state,
+//                 &mds,
+//                 &round_constants,
+//             );
 
-            layouter.assign_region(
-                || "constrain final state",
-                |mut region| {
-                    let mut final_state_word = |i: usize| {
-                        let var = region.assign_advice(
-                            || format!("load final_state_{}", i),
-                            config.state[i],
-                            0,
-                            || Ok(expected_final_state[i]),
-                        )?;
-                        region.constrain_equal(final_state[i].var, var)
-                    };
+//             layouter.assign_region(
+//                 || "constrain final state",
+//                 |mut region| {
+    //                 let mut final_state_word = |i: usize| {
+    //                     let var = region.assign_advice(
+    //                         || format!("load final_state_{}", i),
+    //                         config.state[i],
+    //                         0,
+    //                         || Ok(expected_final_state[i]),
+    //                     )?;
+    //                     region.constrain_equal(final_state[i].var, var)
+    //                 };
 
-                    final_state_word(0)?;
-                    final_state_word(1)?;
-                    final_state_word(2)
-                },
-            )
-        }
-    }
+    //                 final_state_word(0)?;
+    //                 final_state_word(1)?;
+    //                 final_state_word(2)
+    //             },
+    //         )
+    //     }
+    // }
 
-    #[test]
-    fn poseidon_permute() {
-        let k = 6;
-        let circuit = PermuteCircuit {};
-        let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-        assert_eq!(prover.verify(), Ok(()))
-    }
+//     #[test]
+//     fn poseidon_permute() {
+//         let k = 6;
+//         let circuit = PermuteCircuit {};
+//         let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+//         assert_eq!(prover.verify(), Ok(()))
+//     }
 
-    #[derive(Default)]
-    struct HashCircuit {
-        message: Option<[Fp; 2]>,
-        // For the purpose of this test, witness the result.
-        // TODO: Move this into an instance column.
-        output: Option<Fp>,
-    }
+//     #[derive(Default)]
+//     struct HashCircuit {
+//         message: Option<[Fp; 2]>,
+//         // For the purpose of this test, witness the result.
+//         // TODO: Move this into an instance column.
+//         output: Option<Fp>,
+//     }
 
-    impl Circuit<Fp> for HashCircuit {
-        type Config = Pow5T3Config<Fp>;
-        type FloorPlanner = SimpleFloorPlanner;
+//     impl Circuit<Fp> for HashCircuit {
+//         type Config = Pow5T3Config<Fp>;
+//         type FloorPlanner = SimpleFloorPlanner;
 
-        fn without_witnesses(&self) -> Self {
-            Self::default()
-        }
+//         fn without_witnesses(&self) -> Self {
+//             Self::default()
+//         }
 
-        fn configure(meta: &mut ConstraintSystem<Fp>) -> Pow5T3Config<Fp> {
-            let state = [
-                meta.advice_column(),
-                meta.advice_column(),
-                meta.advice_column(),
-            ];
-            let partial_sbox = meta.advice_column();
+//         fn configure(meta: &mut ConstraintSystem<Fp>) -> Pow5T3Config<Fp> {
+//             let state = [
+//                 meta.advice_column(),
+//                 meta.advice_column(),
+//                 meta.advice_column(),
+//             ];
+//             let partial_sbox = meta.advice_column();
 
-            let rc_a = [
-                meta.fixed_column(),
-                meta.fixed_column(),
-                meta.fixed_column(),
-            ];
-            let rc_b = [
-                meta.fixed_column(),
-                meta.fixed_column(),
-                meta.fixed_column(),
-            ];
+//             let rc_a = [
+//                 meta.fixed_column(),
+//                 meta.fixed_column(),
+//                 meta.fixed_column(),
+//             ];
+//             let rc_b = [
+//                 meta.fixed_column(),
+//                 meta.fixed_column(),
+//                 meta.fixed_column(),
+//             ];
 
-            meta.enable_constant(rc_b[0]);
+//             meta.enable_constant(rc_b[0]);
 
-            Pow5T3Chip::configure(meta, OrchardNullifier, state, partial_sbox, rc_a, rc_b)
-        }
+//             Pow5T3Chip::configure(meta, OrchardNullifier, state, partial_sbox, rc_a, rc_b)
+//         }
 
-        fn synthesize(
-            &self,
-            config: Pow5T3Config<Fp>,
-            mut layouter: impl Layouter<Fp>,
-        ) -> Result<(), Error> {
-            let chip = Pow5T3Chip::construct(config.clone());
+//         fn synthesize(
+//             &self,
+//             config: Pow5T3Config<Fp>,
+//             mut layouter: impl Layouter<Fp>,
+//         ) -> Result<(), Error> {
+//             let chip = Pow5T3Chip::construct(config.clone());
 
-            let message = layouter.assign_region(
-                || "load message",
-                |mut region| {
-                    let mut message_word = |i: usize| {
-                        let value = self.message.map(|message_vals| message_vals[i]);
-                        let var = region.assign_advice(
-                            || format!("load message_{}", i),
-                            config.state[i],
-                            0,
-                            || value.ok_or(Error::SynthesisError),
-                        )?;
-                        Ok(Word::<_, _, OrchardNullifier, WIDTH, 2> {
-                            inner: StateWord { var, value },
-                        })
-                    };
+//             let message = layouter.assign_region(
+//                 || "load message",
+//                 |mut region| {
+//                     let mut message_word = |i: usize| {
+//                         let value = self.message.map(|message_vals| message_vals[i]);
+//                         let var = region.assign_advice(
+//                             || format!("load message_{}", i),
+//                             config.state[i],
+//                             0,
+//                             || value.ok_or(Error::SynthesisError),
+//                         )?;
+//                         Ok(Word::<_, _, OrchardNullifier, WIDTH, 2> {
+//                             inner: StateWord { var, value },
+//                         })
+//                     };
 
-                    Ok([message_word(0)?, message_word(1)?])
-                },
-            )?;
+//                     Ok([message_word(0)?, message_word(1)?])
+//                 },
+//             )?;
 
-            let hasher = Hash::init(chip, layouter.namespace(|| "init"), ConstantLength::<2>)?;
-            let output = hasher.hash(layouter.namespace(|| "hash"), message)?;
+//             let hasher = Hash::init(chip, layouter.namespace(|| "init"), ConstantLength::<2>)?;
+//             let output = hasher.hash(layouter.namespace(|| "hash"), message)?;
 
-            layouter.assign_region(
-                || "constrain output",
-                |mut region| {
-                    let expected_var = region.assign_advice(
-                        || "load output",
-                        config.state[0],
-                        0,
-                        || self.output.ok_or(Error::SynthesisError),
-                    )?;
-                    let word: StateWord<_> = output.inner;
-                    region.constrain_equal(word.var, expected_var)
-                },
-            )
-        }
-    }
+//             layouter.assign_region(
+//                 || "constrain output",
+//                 |mut region| {
+//                     let expected_var = region.assign_advice(
+//                         || "load output",
+//                         config.state[0],
+//                         0,
+//                         || self.output.ok_or(Error::SynthesisError),
+//                     )?;
+//                     let word: StateWord<_> = output.inner;
+//                     region.constrain_equal(word.var, expected_var)
+//                 },
+//             )
+//         }
+//     }
 
-    #[test]
-    fn poseidon_hash() {
-        let message = [Fp::rand(), Fp::rand()];
-        let output = poseidon::Hash::init(OrchardNullifier, ConstantLength::<2>).hash(message);
+//     #[test]
+//     fn poseidon_hash() {
+//         let message = [Fp::rand(), Fp::rand()];
+//         let output = poseidon::Hash::init(OrchardNullifier, ConstantLength::<2>).hash(message);
 
-        let k = 6;
-        let circuit = HashCircuit {
-            message: Some(message),
-            output: Some(output),
-        };
-        let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-        assert_eq!(prover.verify(), Ok(()))
-    }
+//         let k = 6;
+//         let circuit = HashCircuit {
+//             message: Some(message),
+//             output: Some(output),
+//         };
+//         let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+//         assert_eq!(prover.verify(), Ok(()))
+//     }
 
-    #[test]
-    fn hash_test_vectors() {
-        for tv in crate::primitives::poseidon::test_vectors::fp::hash() {
-            let message = [
-                pallas::Base::from_repr(tv.input[0]).unwrap(),
-                pallas::Base::from_repr(tv.input[1]).unwrap(),
-            ];
-            let output = poseidon::Hash::init(OrchardNullifier, ConstantLength).hash(message);
+//     // #[test]
+//     // fn hash_test_vectors() {
+//     //     for tv in crate::primitives::poseidon::test_vectors::fp::hash() {
+//     //         let message = [
+//     //             pallas::Base::from_repr(tv.input[0]).unwrap(),
+//     //             pallas::Base::from_repr(tv.input[1]).unwrap(),
+//     //         ];
+//     //         let output = poseidon::Hash::init(OrchardNullifier, ConstantLength).hash(message);
 
-            let k = 6;
-            let circuit = HashCircuit {
-                message: Some(message),
-                output: Some(output),
-            };
-            let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-            assert_eq!(prover.verify(), Ok(()));
-        }
-    }
+//     //         let k = 6;
+//     //         let circuit = HashCircuit {
+//     //             message: Some(message),
+//     //             output: Some(output),
+//     //         };
+//     //         let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+//     //         assert_eq!(prover.verify(), Ok(()));
+//     //     }
+//     // }
 
-    #[cfg(feature = "dev-graph")]
-    #[test]
-    fn print_poseidon_chip() {
-        use plotters::prelude::*;
+//     #[cfg(feature = "dev-graph")]
+//     #[test]
+//     fn print_poseidon_chip() {
+//         use plotters::prelude::*;
 
-        let root = BitMapBackend::new("poseidon-chip-layout.png", (1024, 768)).into_drawing_area();
-        root.fill(&WHITE).unwrap();
-        let root = root
-            .titled("Poseidon Chip Layout", ("sans-serif", 60))
-            .unwrap();
+//         let root = BitMapBackend::new("poseidon-chip-layout.png", (1024, 768)).into_drawing_area();
+//         root.fill(&WHITE).unwrap();
+//         let root = root
+//             .titled("Poseidon Chip Layout", ("sans-serif", 60))
+//             .unwrap();
 
-        let circuit = HashCircuit {
-            message: None,
-            output: None,
-        };
-        halo2::dev::CircuitLayout::default()
-            .render(6, &circuit, &root)
-            .unwrap();
-    }
-}
+//         let circuit = HashCircuit {
+//             message: None,
+//             output: None,
+//         };
+//         halo2::dev::CircuitLayout::default()
+//             .render(6, &circuit, &root)
+//             .unwrap();
+//     }
+// }

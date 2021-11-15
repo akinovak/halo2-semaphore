@@ -55,6 +55,10 @@ impl UtilitiesInstructions<pallas::Base> for SemaphoreCircuit {
     type Var = CellValue<pallas::Base>;
 }
 
+// impl SemaphoreCircuit {
+//     fn calculate_identity_commitment()
+// }
+
 impl Circuit<pallas::Base> for SemaphoreCircuit 
 {
     type Config = Config;
@@ -117,6 +121,7 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
         let merkle_chip = config.construct_merkle_chip();
 
         let poseidon_chip = config.construct_poseidon_chip();
+        let poseidon_chip_2 = config.construct_poseidon_chip();
 
         let mut poseidon_hasher: PoseidonHash
         <
@@ -129,17 +134,17 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
         > 
             = PoseidonHash::init(poseidon_chip, layouter.namespace(|| "init hasher"), ConstantLength::<2>)?;
 
-        // let mut nullifier_hasher: PoseidonHash
-        //     <
-        //         Fp, 
-        //         PoseidonChip<Fp>, 
-        //         P128Pow5T3, 
-        //         ConstantLength<2_usize>, 
-        //         3_usize, 
-        //         2_usize
-        //     > 
-        //         = PoseidonHash::init(poseidon_chip, layouter.namespace(|| "init hasher"), ConstantLength::<2>)?;
-        
+        let mut poseidon_hasher_2: PoseidonHash
+            <
+                Fp, 
+                PoseidonChip<Fp>, 
+                P128Pow5T3, 
+                ConstantLength<2_usize>, 
+                3_usize, 
+                2_usize
+            > 
+                = PoseidonHash::init(poseidon_chip_2, layouter.namespace(|| "init hasher"), ConstantLength::<2>)?;
+
         let identity_trapdoor = self.load_private(
             layouter.namespace(|| "witness identity_trapdoor"),
             config.advices[0],
@@ -172,19 +177,23 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
         )?;
 
         let identity_commitment_word = poseidon_hasher.hash(layouter.namespace(|| "hash to identity commitment"), identity_commitment_loaded, "identity commitment")?;
-        let identity_commitment: CellValue<pallas::Base> = identity_commitment_word.inner().into();
+        let identity_commitment: CellValue<Fp> = identity_commitment_word.inner().into();
+
+        // println!("{:?}", identity_commitment.value());
 
 
         let nullifier_message = [identity_nullifier, external_nulifier];
 
-        let nullifier_loaded = poseidon_hasher.witness_message_pieces(
+        let nullifier_loaded = poseidon_hasher_2.witness_message_pieces(
             config.poseidon_config.clone(),
             layouter.namespace(|| "nullifier hash"),
             nullifier_message
         )?;
 
-        let nullifier_hash_word = poseidon_hasher.hash(layouter.namespace(|| "hash to nullifier hash"), nullifier_loaded, "nullifier hash")?;
-        let nullifier_hash: CellValue<pallas::Base> = nullifier_hash_word.inner().into();
+        let nullifier_hash_word = poseidon_hasher_2.hash(layouter.namespace(|| "hash to nullifier hash"), nullifier_loaded, "nullifier hash")?;
+        let nullifier_hash: CellValue<Fp> = nullifier_hash_word.inner().into();
+
+        println!("From circuit: {:?}", nullifier_hash.value());
     
 
         // let identity_commitment = add_chip.add(layouter.namespace(|| "commitment"), identity_nullifier, identity_trapdoor)?;
@@ -215,6 +224,10 @@ impl Circuit<pallas::Base> for SemaphoreCircuit
 fn main() {
     use halo2::{dev::MockProver};
 
+    use crate:: {
+        primitives::poseidon::{Hash}
+    };
+
     let k = 7;
 
     let identity_trapdoor = Fp::from(2);
@@ -225,7 +238,11 @@ fn main() {
     let identity_commitment = identity_trapdoor + identity_nullifier;
     let message = [identity_trapdoor, identity_nullifier];
     // let identity_commitment = PoseidonHash::init(P128Pow5T3, ConstantLength::<2>).hash(message);
-    let nullifier_hash = identity_nullifier + external_nullifier;
+    // let nullifier_hash = identity_nullifier + external_nullifier;
+
+    let message = [identity_nullifier, external_nullifier];
+    let nullifier_hash = Hash::init(P128Pow5T3, ConstantLength::<2>).hash(message);
+    println!("From main: {:?}", Some(nullifier_hash));
 
     let root = identity_commitment + Fp::from(4);
 
@@ -241,8 +258,8 @@ fn main() {
     let mut public_inputs = vec![external_nullifier, nullifier_hash, root];
 
     // Given the correct public input, our circuit will verify.
-    // let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
-    // assert_eq!(prover.verify(), Ok(()));
+    let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
+    assert_eq!(prover.verify(), Ok(()));
 
     // If we try some other public input, the proof will fail!
     // public_inputs[0] += Fp::one();
